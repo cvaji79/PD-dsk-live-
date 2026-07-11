@@ -1,1 +1,1959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"/>
+<meta name="theme-color" content="#0f172a"/>
+<meta name="mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<title>TradeBook</title>
+<link rel="manifest" href="manifest.json"/>
+<style>
+:root{
+  --bg:#0f172a;--bg2:#1e293b;--bg3:#334155;
+  --text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;
+  --green:#22c55e;--green-bg:#052e16;--green-dim:#166534;
+  --red:#ef4444;--red-bg:#200808;--red-dim:#7f1d1d;
+  --blue:#3b82f6;--blue-bg:#1e3a5f;
+  --amber:#f59e0b;--amber-bg:#451a03;
+  --purple:#a855f7;--purple-bg:#2e1065;
+  --border:#334155;--radius:10px;
+  --font:'Inter',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;overflow:hidden}
+/* --- LAYOUT --- */
+#app{display:flex;flex-direction:column;height:100vh;width:100%;max-width:500px;margin:0 auto;position:relative}
+.topbar{background:var(--bg2);padding:10px 12px 7px;border-bottom:1px solid var(--border);flex-shrink:0}
+.topbar-r1{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:6px}
+.app-name{font-size:16px;font-weight:700;letter-spacing:-0.5px;flex-shrink:0}
+.app-name span{color:var(--blue)}
+.topbar-right{display:flex;gap:5px;align-items:center;flex-shrink:0}
+.mode-sw{display:flex;background:var(--bg);border-radius:20px;padding:2px;gap:2px}
+.mode-btn{padding:4px 9px;border-radius:16px;font-size:10px;font-weight:700;border:none;cursor:pointer;color:var(--text2);background:none;white-space:nowrap}
+.mode-btn.ap{background:var(--blue-bg);color:var(--blue)}
+.mode-btn.al{background:var(--red-dim);color:var(--red)}
+.mkt-strip{display:flex;gap:10px;overflow-x:auto;scrollbar-width:none;padding-bottom:1px}
+.mkt-strip::-webkit-scrollbar{display:none}
+.mkt-it{flex-shrink:0;font-size:10px}
+.mkt-nm{color:var(--text3);margin-right:2px}
+.mkt-vl{font-weight:700}
+.up{color:var(--green)}.dn{color:var(--red)}
+/* NAV — fixed bottom, full width */
+.nav{display:flex;background:var(--bg2);border-top:1px solid var(--border);position:fixed;bottom:0;left:0;right:0;z-index:100;max-width:500px;margin:0 auto;left:50%;transform:translateX(-50%)}
+.nb{flex:1;padding:8px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;border:none;background:none;color:var(--text3);cursor:pointer;font-size:8px;font-weight:500}
+.nb.active{color:var(--blue)}
+.ni{font-size:16px;line-height:1}
+/* CONTENT — scrollable, nav height 56px */
+.content{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 10px 64px;-webkit-overflow-scrolling:touch}
+.content::-webkit-scrollbar{width:3px}
+.content::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.tab-panel{display:none}.tab-panel.active{display:block}
+/* CARDS */
+.card{background:var(--bg2);border-radius:var(--radius);border:1px solid var(--border);padding:11px;margin-bottom:9px}
+.card-title{font-size:10px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px}
+/* METRICS */
+.mg{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:9px}
+.met{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:9px 10px}
+.ml{font-size:9px;color:var(--text3);margin-bottom:2px}
+.mv{font-size:17px;font-weight:700}
+.ms{font-size:9px;color:var(--text2);margin-top:1px}
+/* WATCHLIST */
+.wl-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);cursor:pointer;gap:6px}
+.wl-row:last-child{border-bottom:none}
+.wl-nm{font-size:13px;font-weight:600;margin-bottom:1px}
+.wl-sg{font-size:9px;color:var(--text3)}
+.wl-pr{font-size:13px;font-weight:600;text-align:right}
+.wl-ch{font-size:10px;text-align:right;margin-top:1px}
+/* BADGES */
+.badge{font-size:9px;padding:1px 5px;border-radius:4px;margin-left:3px;font-weight:700;vertical-align:middle}
+.b-eq{background:#1e3a5f;color:var(--blue)}.b-fut{background:var(--amber-bg);color:var(--amber)}
+.b-opt{background:var(--purple-bg);color:var(--purple)}.b-mis{background:#052e16;color:var(--green)}
+.b-nrml{background:#1c1a04;color:var(--amber)}
+/* ORDER FORM */
+.seg-tabs{display:flex;gap:5px;margin-bottom:9px}
+.seg-tab{flex:1;padding:6px;border-radius:7px;font-size:12px;font-weight:700;text-align:center;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer}
+.seg-tab.active{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+.buy-sell{display:flex;border-radius:8px;overflow:hidden;margin-bottom:9px;border:1px solid var(--border)}
+.bs-btn{flex:1;padding:9px;font-size:14px;font-weight:700;border:none;cursor:pointer;background:var(--bg);color:var(--text2)}
+.bs-btn.buy.active{background:var(--green-dim);color:var(--green)}
+.bs-btn.sell.active{background:var(--red-dim);color:var(--red)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:7px}
+.field{display:flex;flex-direction:column;gap:3px}
+.field label{font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.field input,.field select{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:8px 9px;color:var(--text);font-size:13px;font-family:var(--font);outline:none;width:100%}
+.field input:focus,.field select:focus{border-color:var(--blue)}
+.place-btn{width:100%;padding:12px;border-radius:9px;border:none;font-size:15px;font-weight:700;cursor:pointer;margin-top:5px}
+.place-btn.buy-btn{background:var(--green);color:#000}
+.place-btn.sell-btn{background:var(--red);color:#fff}
+.xtra{display:none}.xtra.show{display:block}
+/* POSITIONS */
+.pos-row{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:9px 10px;margin-bottom:7px}
+.pos-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px}
+.pos-nm{font-size:12px;font-weight:700;word-break:break-all;padding-right:6px}
+.pos-pnl{text-align:right;flex-shrink:0}
+.pos-pv{font-size:14px;font-weight:700}.pos-pp{font-size:10px;margin-top:1px}
+.pos-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.pmi{font-size:10px;color:var(--text2)}
+.pml{color:var(--text3);margin-right:2px;font-size:9px}
+.pos-acts{display:flex;gap:5px;flex-wrap:wrap}
+.pb{font-size:10px;padding:4px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer;font-weight:700}
+.pb.edit-btn{border-color:#92400e;color:var(--amber)}
+.pb.close-btn{border-color:var(--red-dim);color:var(--red)}
+/* HISTORY */
+.hr{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);gap:6px}
+.hr:last-child{border-bottom:none}
+.hn{font-size:12px;font-weight:600}.hm{font-size:9px;color:var(--text3);margin-top:1px}
+.hp{font-size:13px;font-weight:700;text-align:right}.hd{font-size:9px;color:var(--text3);margin-top:1px}
+/* FILTER */
+.filter-row{display:flex;gap:5px;margin-bottom:9px;overflow-x:auto;scrollbar-width:none;padding-bottom:3px}
+.filter-row::-webkit-scrollbar{display:none}
+.fchip{padding:4px 11px;border-radius:14px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.fchip.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+/* TOAST */
+.toast{position:fixed;bottom:64px;left:50%;transform:translateX(-50%);background:#1e293b;border:1px solid var(--border);border-radius:9px;padding:8px 14px;font-size:12px;font-weight:600;z-index:9999;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap;max-width:92vw}
+.toast.show{opacity:1}
+/* MODALS */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:300;display:none;align-items:flex-end;justify-content:center}
+.overlay.show{display:flex}
+.mbox{background:var(--bg2);border-radius:18px 18px 0 0;width:100%;max-width:500px;border:1px solid var(--border);max-height:92vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+/* OI TRACKER */
+.tf-btn{padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;font-weight:700;cursor:pointer}
+.tf-btn.active{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+.oi-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border);-webkit-overflow-scrolling:touch}
+.oi-tbl{width:100%;border-collapse:collapse;font-size:10px;min-width:460px}
+.oi-tbl th{background:#0a1929;color:var(--text3);padding:6px 4px;font-size:9px;font-weight:700;text-transform:uppercase;text-align:center;position:sticky;top:0}
+.oi-tbl td{padding:5px 4px;text-align:center;border-bottom:1px solid #1a2744}
+.oi-tbl tr:nth-child(even) td{background:#0f1f33}
+.bull{color:var(--green)}.bear{color:var(--red)}
+.dir-b{display:inline-block;padding:2px 6px;border-radius:4px;font-size:9px;font-weight:700}
+.du{background:var(--green-dim);color:var(--green)}.dd{background:var(--red-dim);color:var(--red)}
+/* OPTION CHAIN */
+.oc-wrap{overflow-x:auto;border-radius:0;-webkit-overflow-scrolling:touch}
+.oc-tbl{width:100%;border-collapse:collapse;font-size:10px;min-width:340px}
+.oc-tbl th{background:#120a2e;color:var(--purple);padding:6px 3px;font-size:9px;font-weight:700;text-transform:uppercase;text-align:center;position:sticky;top:0}
+.oc-tbl td{padding:6px 3px;text-align:center;border-bottom:1px solid #1a0a2e;cursor:pointer}
+.oc-tbl tr:hover td{background:#1e0a3e}
+.atm td{background:#1e1040!important;font-weight:700}
+.cec{color:#60a5fa}.pec{color:#f87171}.stk{color:var(--text);font-weight:700}
+/* LIVE BANNER */
+.lb{background:var(--red-bg);border:1px solid var(--red-dim);border-radius:8px;padding:7px 10px;margin-bottom:9px;font-size:11px;color:var(--red);display:none}
+.lb.show{display:block}
+/* API STATUS */
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:middle;flex-shrink:0}
+.dot.live{background:var(--green)}.dot.paper{background:var(--blue)}
+/* FYERS LOGIN */
+.fl-step{background:var(--bg);border:1px solid var(--border);border-radius:9px;padding:13px;margin-bottom:9px}
+.fl-title{font-size:11px;font-weight:700;color:var(--amber);margin-bottom:9px}
+.fl-num{display:inline-block;width:20px;height:20px;border-radius:50%;background:var(--blue-bg);color:var(--blue);font-size:10px;font-weight:700;text-align:center;line-height:20px;margin-right:5px}
+.fi{background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:9px 10px;color:var(--text);font-size:13px;font-family:var(--font);outline:none;width:100%;margin-bottom:6px}
+.fi:focus{border-color:var(--blue)}
+.fl{font-size:9px;color:var(--text3);font-weight:700;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:3px}
+.fb{width:100%;padding:11px;border-radius:8px;border:none;font-size:13px;font-weight:700;cursor:pointer;margin-top:3px}
+.fb:disabled{opacity:.5;cursor:not-allowed}
+.fs{font-size:11px;padding:7px 9px;border-radius:7px;margin-top:7px;text-align:center;display:none;white-space:pre-wrap;line-height:1.5}
+.fok{background:var(--green-bg);color:var(--green);border:1px solid var(--green-dim);display:block}
+.ferr{background:var(--red-bg);color:var(--red);border:1px solid var(--red-dim);display:block}
+.finfo{background:var(--blue-bg);color:var(--blue);border:1px solid #2d4a7a;display:block}
+/* EDIT MODAL */
+.ei{background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:8px 10px;color:var(--text);font-size:13px;font-family:var(--font);outline:none;width:100%}
+.ei:focus{border-color:var(--amber)}
+/* MISC */
+.chart-wrap{height:58px;margin:7px 0}
+canvas.mc{width:100%;height:58px}
+.empty{text-align:center;padding:28px 16px;color:var(--text3)}
+.empty-i{font-size:30px;margin-bottom:5px}.empty-t{font-size:11px}
+</style>
+</head>
+<body>
+<div id="app">
 
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-r1">
+    <div class="app-name">Trade<span>Book</span>
+      <span style="font-size:9px;font-weight:400;color:var(--text3);margin-left:5px">
+        <span class="dot paper" id="apiDot"></span><span id="apiSt">Paper</span>
+      </span>
+    </div>
+    <div class="topbar-right">
+      <button onclick="showLogin()" id="loginBtn" style="padding:4px 10px;border-radius:13px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:var(--blue-bg);color:var(--blue);white-space:nowrap">🔑 Login</button>
+      <div class="mode-sw">
+        <button class="mode-btn ap" id="btnPaper" onclick="setMode('paper')">📋 Paper</button>
+        <button class="mode-btn" id="btnLive" onclick="setMode('live')">⚡ Live</button>
+      </div>
+    </div>
+  </div>
+  <div class="mkt-strip">
+    <div class="mkt-it"><span class="mkt-nm">NIFTY</span><span class="mkt-vl up" id="mN">24,416</span></div>
+    <div class="mkt-it"><span class="mkt-nm">BANK</span><span class="mkt-vl dn" id="mB">52,012</span></div>
+    <div class="mkt-it"><span class="mkt-nm">SENSEX</span><span class="mkt-vl up" id="mS">80,576</span></div>
+    <div class="mkt-it"><span class="mkt-nm">FIN</span><span class="mkt-vl up" id="mF">23,870</span></div>
+    <div id="feedSt" style="font-size:10px;color:var(--red);margin-left:auto;display:none"></div>
+  </div>
+</div>
+
+<!-- CONTENT -->
+<div class="content">
+
+  <!-- DASHBOARD TAB -->
+  <div class="tab-panel active" id="tab-dashboard">
+    <div class="lb" id="liveBanner">⚡ LIVE MODE — Real Fyers orders active</div>
+    <div class="mg">
+      <div class="met"><div class="ml">Today P&L</div><div class="mv" id="todayPnl">₹0</div><div class="ms" id="todayPct">0.00%</div></div>
+      <div class="met"><div class="ml">Overall P&L</div><div class="mv" id="overallPnl">₹0</div><div class="ms">All time</div></div>
+      <div class="met"><div class="ml">Capital</div><div class="mv" id="capitalVal">₹2,00,000</div><div class="ms">Available</div></div>
+      <div class="met"><div class="ml">Positions</div><div class="mv" id="openPosCount">0</div><div class="ms">Open</div></div>
+    </div>
+    <div class="card"><div class="card-title">P&L Chart</div><div class="chart-wrap"><canvas id="pnlChart" class="mc"></canvas></div></div>
+    <div class="card">
+      <div class="card-title">Watchlist <span onclick="openModal('wlModal')" style="float:right;color:var(--blue);font-size:11px;cursor:pointer;font-weight:700">+ Add</span></div>
+      <div id="wlDiv"></div>
+    </div>
+    <div class="card"><div class="card-title">Open Positions</div><div id="posDiv"></div></div>
+  </div>
+
+  <!-- ORDER TAB -->
+  <div class="tab-panel" id="tab-order">
+    <div class="card">
+      <div class="card-title">Place Order</div>
+      <!-- Segment -->
+      <div class="seg-tabs">
+        <div class="seg-tab active" onclick="setSeg('EQ')" id="seg-EQ">Equity</div>
+        <div class="seg-tab" onclick="setSeg('FUT')" id="seg-FUT">Futures</div>
+        <div class="seg-tab" onclick="setSeg('OPT')" id="seg-OPT">Options</div>
+      </div>
+      <!-- Buy/Sell -->
+      <div class="buy-sell">
+        <button class="bs-btn buy active" id="btnBuy" onclick="setBuySell('BUY')">BUY</button>
+        <button class="bs-btn sell" id="btnSell" onclick="setBuySell('SELL')">SELL</button>
+      </div>
+      <!-- Symbol & Exchange -->
+      <div class="form-row">
+        <div class="field"><label>Symbol</label><input id="fSym" placeholder="e.g. NIFTY" list="symL" oninput="onSymInput(this.value)"/></div>
+        <div class="field"><label>Exchange</label><select id="fExch"><option>NSE</option><option>BSE</option><option>NFO</option></select></div>
+      </div>
+      <datalist id="symL"><option value="RELIANCE"/><option value="TCS"/><option value="INFY"/><option value="HDFCBANK"/><option value="NIFTY"/><option value="BANKNIFTY"/><option value="FINNIFTY"/><option value="SBIN"/><option value="ICICIBANK"/><option value="ADANIENT"/></datalist>
+      <!-- FUT extras -->
+      <div id="futX" class="xtra">
+        <div class="form-row">
+          <div class="field"><label>Expiry</label><input id="fExp" placeholder="03JUL2026"/></div>
+          <div class="field"><label>Lot Size</label><input id="fLotSz" readonly style="background:var(--bg3);color:var(--text3)"/></div>
+        </div>
+      </div>
+      <!-- OPT extras -->
+      <div id="optX" class="xtra">
+        <button onclick="openModal('ocModal');loadOC()" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--purple);background:var(--purple-bg);color:var(--purple);font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">
+          📊 Open Option Chain → Select Strike
+        </button>
+        <div id="selStrikeInfo" style="display:none;padding:6px 9px;background:var(--bg);border:1px solid var(--purple);border-radius:7px;font-size:10px;margin-bottom:7px;color:var(--purple)"></div>
+        <div class="form-row">
+          <div class="field"><label>Expiry</label><input id="oExp" placeholder="03JUL2026" oninput="window.pickedOpt=null"/></div>
+          <div class="field"><label>Strike</label><input id="oStk" placeholder="24400" oninput="window.pickedOpt=null"/></div>
+        </div>
+        <div class="form-row">
+          <div class="field"><label>CE / PE</label><select id="oTyp" onchange="onOTypChg()"><option value="CE">CE — Call</option><option value="PE">PE — Put</option></select></div>
+          <div class="field"><label>Lot Size</label><input id="oLotSz" readonly style="background:var(--bg3);color:var(--text3)"/></div>
+        </div>
+      </div>
+      <!-- Product & Qty -->
+      <div class="form-row">
+        <div class="field"><label>Product</label><select id="fProd"><option value="MIS">MIS — Intraday</option><option value="CNC">CNC — Delivery</option><option value="NRML">NRML — CarryFwd</option></select></div>
+        <div class="field"><label>Lots / Qty</label><input id="fQty" value="1" type="number" min="1" oninput="updateOrderSummary()"/></div>
+      </div>
+      <!-- Order type & Price -->
+      <div class="form-row">
+        <div class="field"><label>Order Type</label><select id="fOrdT" onchange="onOrdTypeChg()"><option value="MARKET">Market</option><option value="LIMIT">Limit</option><option value="SL">SL</option><option value="SL-M">SL-M</option></select></div>
+        <div class="field"><label>Price</label><input id="fPrice" placeholder="Market"/></div>
+      </div>
+      <div class="form-row" id="slRow" style="display:none">
+        <div class="field"><label>Trigger</label><input id="fTrig" placeholder="SL trigger"/></div>
+        <div class="field"><label>SL Pts</label><input id="fSLPts" placeholder="Optional"/></div>
+      </div>
+      <!-- TGT / SL / TSL -->
+      <div class="form-row">
+        <div class="field"><label>Target ₹</label><input id="fTgt" placeholder="0 = none" type="number" min="0"/></div>
+        <div class="field"><label>Stoploss ₹</label><input id="fSL" placeholder="0 = none" type="number" min="0"/></div>
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <label>Trailing SL (pts) — 0 = off</label>
+        <input id="fTSL" placeholder="e.g. 20" type="number" min="0"/>
+      </div>
+      <!-- Summary -->
+      <div id="orderSummary" style="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:11px;color:var(--text2);margin-bottom:7px;display:none"></div>
+      <button class="place-btn buy-btn" id="placeBtn" onclick="placeOrder()">PLACE BUY ORDER</button>
+    </div>
+    <div class="card"><div class="card-title">Today's Orders</div><div id="ordDiv"></div></div>
+  </div>
+
+  <!-- COC TAB (cvaji Option Chain — 3m CE/PE meeting-point board) -->
+  <div class="tab-panel" id="tab-coc">
+    <div class="card" style="padding:9px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+        <div style="font-size:13px;font-weight:700;color:var(--amber)">🎯 COC — cvaji Option Chain</div>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;align-items:center">
+        <select id="cocSym" onchange="populateCocExpiries()" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:11px">
+          <option>NIFTY</option><option>BANKNIFTY</option><option>FINNIFTY</option><option>MIDCPNIFTY</option><option>SENSEX</option><option>BANKEX</option>
+        </select>
+        <select id="cocExp" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:11px;flex:1;min-width:110px"></select>
+        <button onclick="runCocScan()" id="cocScanBtn" style="padding:6px 12px;border-radius:7px;border:1px solid var(--amber);background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:700;cursor:pointer">▶ Scan</button>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:7px;font-size:10px;color:var(--text2)" id="cocDayStrip"></div>
+      <div id="cocSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Needs Fyers login. Select symbol/expiry and tap Scan.</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:10px;white-space:nowrap" id="cocTbl">
+          <thead><tr style="border-bottom:1px solid var(--border);color:var(--text3)">
+            <th style="padding:5px;text-align:left">Strike</th>
+            <th style="padding:5px">CE LTP</th>
+            <th style="padding:5px">MAP</th>
+            <th style="padding:5px">MPH</th>
+            <th style="padding:5px">MPL</th>
+            <th style="padding:5px">SNI</th>
+            <th style="padding:5px">PE LTP</th>
+            <th style="padding:5px">MP Time</th>
+          </tr></thead>
+          <tbody id="cocBody"><tr><td colspan="8" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr></tbody>
+        </table>
+      </div>
+      <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">MAP = last CE/PE meeting price (3m candle) · MPH/MPL = that candle's merged high/low · SNI = one-strike-OTM CE+PE prev-day-close average · Green CE = LTP&gt;SNI · Red PE = LTP&lt;SNI</div>
+    </div>
+  </div>
+
+  <!-- OI TRACKER TAB -->
+  <div class="tab-panel" id="tab-oi">
+    <div class="card" style="padding:9px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+        <div style="font-size:13px;font-weight:700;color:var(--purple)">📊 Stock Analysis — F&O Breadth (RVI)</div>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;align-items:center">
+        <div class="field" style="flex:0 0 70px;margin:0"><label style="font-size:8px">RVI Len</label><input id="rviLen" value="99" style="padding:5px 6px;font-size:11px"/></div>
+        <div class="field" style="flex:0 0 70px;margin:0"><label style="font-size:8px">Signal</label><input id="rviSig" value="9" style="padding:5px 6px;font-size:11px"/></div>
+        <select id="rviTf" onchange="renderBreadthTable()" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:11px">
+          <option value="1">1M</option><option value="3">3M</option><option value="5">5M</option>
+          <option value="15">15M</option><option value="25">25M</option><option value="75">75M</option>
+          <option value="D">1 Day</option>
+        </select>
+        <button onclick="runBreadthScan()" id="breadthScanBtn" style="padding:6px 12px;border-radius:7px;border:1px solid var(--purple);background:var(--purple-bg);color:var(--purple);font-size:11px;font-weight:700;cursor:pointer">▶ Scan</button>
+      </div>
+      <div id="breadthSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Needs Fyers login. Scans the full F&O list — can take 1-2 minutes.</div>
+      <div id="breadthTableWrap"></div>
+    </div>
+
+    <div class="card" style="padding:9px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+        <div style="font-size:13px;font-weight:700;color:var(--blue)">📈 Nifty OI Tracker</div>
+        <div style="font-size:10px;color:var(--text3)" id="oiSpot">NIFTY: —</div>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;align-items:center">
+        <button class="tf-btn active" onclick="setTf(1,this)">1M</button>
+        <button class="tf-btn" onclick="setTf(3,this)">3M</button>
+        <button class="tf-btn" onclick="setTf(5,this)">5M</button>
+        <button class="tf-btn" onclick="setTf(15,this)">15M</button>
+        <button onclick="oiRefresh()" style="padding:5px 10px;border-radius:6px;border:none;background:var(--green-dim);color:var(--green);font-size:10px;font-weight:700;cursor:pointer">⟳ Refresh</button>
+        <span style="font-size:9px;color:var(--text3);margin-left:auto" id="oiTimer">—</span>
+      </div>
+      <div id="oiSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Tap Refresh or login Fyers for live data</div>
+      <div class="oi-wrap">
+        <table class="oi-tbl">
+          <thead><tr><th>Time</th><th>Spot</th><th>CE OI Δ</th><th>PE OI Δ</th><th>Diff OI</th><th>Diff%</th><th>Dir</th><th>Sentiment</th></tr></thead>
+          <tbody id="oiBody"><tr><td colspan="8" style="padding:18px;color:var(--text3)">No data yet</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div class="tab-panel" id="tab-hist">
+    <div class="filter-row">
+      <div class="fchip active" onclick="setFilt('ALL',this)">All</div>
+      <div class="fchip" onclick="setFilt('EQ',this)">Stocks</div>
+      <div class="fchip" onclick="setFilt('FUT',this)">Futures</div>
+      <div class="fchip" onclick="setFilt('OPT',this)">Options</div>
+      <div class="fchip" onclick="setFilt('MIS',this)">Intraday</div>
+      <div class="fchip" onclick="setFilt('WIN',this)">Winners</div>
+      <div class="fchip" onclick="setFilt('LOSS',this)">Losers</div>
+    </div>
+    <div class="mg" style="margin-bottom:9px">
+      <div class="met"><div class="ml">Trades</div><div class="mv" id="sTotal">0</div></div>
+      <div class="met"><div class="ml">Win Rate</div><div class="mv" id="sWin">0%</div></div>
+      <div class="met"><div class="ml">Total P&L</div><div class="mv" id="sPnl">₹0</div></div>
+      <div class="met"><div class="ml">Avg/Trade</div><div class="mv" id="sAvg">₹0</div></div>
+    </div>
+    <div class="card"><div class="card-title">Trade Log (30 days)</div><div id="histDiv"></div></div>
+  </div>
+
+  <!-- PORTFOLIO TAB -->
+  <div class="tab-panel" id="tab-port">
+    <div class="card"><div class="card-title">Holdings (CNC)</div><div id="holdDiv"><div class="empty"><div class="empty-i">📦</div><div class="empty-t">No CNC holdings</div></div></div></div>
+    <div class="card">
+      <div class="card-title">Capital</div>
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Initial</span><span id="capInit" style="font-weight:600">₹2,00,000</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Used</span><span id="capUsed" style="font-weight:600;color:var(--amber)">₹0</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text2)">Realised P&L</span><span id="capReal" style="font-weight:600">₹0</span></div>
+        <div style="border-top:1px solid var(--border);padding-top:7px;display:flex;justify-content:space-between;font-size:13px"><span>Net Balance</span><span id="capNet" style="font-weight:700;color:var(--green)">₹2,00,000</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Settings</div>
+      <div class="field" style="margin-bottom:9px"><label>Starting Capital (₹)</label><input id="sCap" type="number" value="200000" onchange="updCap(this.value)"/></div>
+      <div class="field" style="margin-bottom:9px"><label>Fyers App ID</label><input id="sAppId" readonly style="background:var(--bg3);color:var(--text3)" value="5WESGP23O5-200"/></div>
+      <div class="field" style="margin-bottom:6px"><label>Access Token (auto via 🔑 Login)</label><input id="sTok" placeholder="Login to auto-fill" oninput="saveFyersTok(this.value)"/></div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:10px">App ID & Secret are pre-configured. Token expires midnight — re-login each morning.</div>
+      <button onclick="clearData()" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--red-dim);background:var(--red-bg);color:var(--red);font-size:12px;font-weight:700;cursor:pointer">🗑️ Clear All Paper Data</button>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- NAV BAR -->
+<div class="nav">
+  <button class="nb active" onclick="switchTab('dashboard',this)" id="nav-dashboard"><span class="ni">📊</span>Dashboard</button>
+  <button class="nb" onclick="switchTab('order',this)" id="nav-order"><span class="ni">📝</span>Order</button>
+  <button class="nb" onclick="switchTab('coc',this)" id="nav-coc"><span class="ni">🎯</span>COC</button>
+  <button class="nb" onclick="switchTab('oi',this);startOiTimer()" id="nav-oi"><span class="ni">📈</span>OI Track</button>
+  <button class="nb" onclick="switchTab('hist',this)" id="nav-hist"><span class="ni">📅</span>History</button>
+  <button class="nb" onclick="switchTab('port',this)" id="nav-port"><span class="ni">💼</span>Portfolio</button>
+</div>
+
+</div><!-- /app -->
+<div class="toast" id="toast"></div>
+
+<!-- ===== FYERS LOGIN MODAL ===== -->
+<div class="overlay" id="loginModal">
+<div class="mbox">
+  <div style="background:linear-gradient(135deg,#0f1f3d,#1e293b);padding:14px;border-radius:18px 18px 0 0;border-bottom:1px solid var(--border)">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div style="font-size:15px;font-weight:700;color:var(--blue)">🔐 Fyers Login</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">App: 5WESGP23O5-200 · Pre-configured</div>
+      </div>
+      <button onclick="closeModal('loginModal')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer">✕</button>
+    </div>
+    <!-- Token active bar -->
+    <div id="tokBar" style="display:none;margin-top:10px;padding:8px 11px;border-radius:8px;background:var(--green-bg);border:1px solid var(--green-dim)">
+      <div style="font-size:11px;font-weight:700;color:var(--green)">✅ Logged in as: <span id="tokUser"></span></div>
+      <div id="tokSnip" style="font-size:9px;color:var(--text3);margin-top:2px;word-break:break-all;font-family:monospace"></div>
+      <button onclick="fyersLogout()" style="margin-top:6px;padding:4px 11px;border-radius:5px;border:1px solid var(--red-dim);background:var(--red-bg);color:var(--red);font-size:10px;font-weight:700;cursor:pointer">🔴 Logout</button>
+    </div>
+  </div>
+  <div style="padding:13px">
+    <!-- Step 1: Credentials (read-only, pre-filled) -->
+    <div class="fl-step">
+      <div class="fl-title"><span class="fl-num">1</span>App Credentials (Pre-configured)</div>
+      <label class="fl">App ID</label>
+      <input class="fi" value="5WESGP23O5-200" readonly style="background:var(--bg3);color:var(--text3);margin-bottom:8px"/>
+      <label class="fl">Secret Key</label>
+      <input class="fi" value="••••••••••••••••" readonly style="background:var(--bg3);color:var(--text3)"/>
+      <div style="font-size:10px;color:var(--text3);margin-top:4px">Pre-set for your Fyers trading bot — no editing needed</div>
+    </div>
+    <!-- Step 2: Generate + Open URL -->
+    <div class="fl-step">
+      <div class="fl-title"><span class="fl-num">2</span>Open Fyers Login Page</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:9px">Tap <strong style="color:var(--blue)">Generate URL</strong>, then <strong style="color:var(--blue)">Open Browser</strong>. Log in on Fyers page with your ID, PIN and TOTP.</div>
+      <div id="urlBox" style="display:none;margin-bottom:7px;font-size:9px;word-break:break-all;background:var(--bg);padding:6px;border-radius:6px;color:var(--text3);border:1px solid var(--border);font-family:monospace;max-height:44px;overflow:auto" id="urlTxt"></div>
+      <div style="display:flex;gap:7px">
+        <button onclick="genUrl()" class="fb" style="background:var(--purple-bg);color:var(--purple);border:1px solid var(--purple);flex:1">🔗 Generate URL</button>
+        <button onclick="openUrl()" class="fb" style="background:var(--blue-bg);color:var(--blue);border:1px solid var(--blue);flex:1">🌐 Open Browser</button>
+      </div>
+      <div id="st2" class="fs"></div>
+    </div>
+    <!-- Step 3: Paste redirect URL -->
+    <div class="fl-step">
+      <div class="fl-title"><span class="fl-num">3</span>Paste Redirect URL → Get Token</div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:7px">
+        After login, Fyers redirects to a URL with <code style="color:var(--amber);font-size:10px">?auth_code=XXXX</code><br>
+        Copy the <strong>full URL</strong> from browser address bar and paste below:
+      </div>
+      <textarea class="fi" id="redirUrl" placeholder="https://trade.fyers.in/api-login/redirect-uri/index.html?auth_code=eyJ..." rows="3" style="resize:vertical;font-size:11px;font-family:monospace"></textarea>
+      <button onclick="submitCode()" class="fb" id="submitBtn" style="background:var(--green);color:#000;font-weight:700">✅ Submit → Get Token</button>
+      <div id="st3" class="fs"></div>
+    </div>
+    <div style="font-size:10px;color:var(--text3);padding:9px;background:var(--bg);border-radius:7px;line-height:1.7">
+      💡 <strong style="color:var(--amber)">Tips:</strong><br>
+      • Token expires at midnight — re-login each morning<br>
+      • Error −301: auth_code expired → tap Generate URL again fast<br>
+      • Error −302: auth_code used → tap Generate URL for fresh one
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- WATCHLIST MODAL -->
+<div class="overlay" id="wlModal">
+<div class="mbox" style="padding:18px">
+  <div style="display:flex;justify-content:space-between;margin-bottom:13px">
+    <div style="font-size:15px;font-weight:700">Add to Watchlist</div>
+    <button onclick="closeModal('wlModal')" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer">✕</button>
+  </div>
+  <div class="field" style="margin-bottom:9px"><label>Symbol</label><input id="wlSym" placeholder="e.g. TATAMOTORS" list="wlL"/><datalist id="wlL"><option value="RELIANCE"/><option value="TCS"/><option value="INFY"/><option value="HDFCBANK"/><option value="NIFTY"/><option value="BANKNIFTY"/><option value="FINNIFTY"/></datalist></div>
+  <div class="field" style="margin-bottom:13px"><label>Segment</label><select id="wlSeg"><option value="EQ">EQ — Equity</option><option value="FUT">FUT — Futures</option><option value="OPT">OPT — Options</option></select></div>
+  <button onclick="addWl()" style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer">Add</button>
+</div>
+</div>
+
+<!-- OPTION CHAIN MODAL -->
+<div class="overlay" id="ocModal">
+<div class="mbox" style="padding:0;max-height:88vh;display:flex;flex-direction:column">
+  <div style="padding:12px;background:#120a2e;border-radius:18px 18px 0 0;flex-shrink:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px">
+      <div style="font-size:14px;font-weight:700;color:var(--purple)">📊 Option Chain</div>
+      <button onclick="closeModal('ocModal')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap">
+      <div style="flex:1;min-width:80px">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:3px;font-weight:700">SYMBOL</div>
+        <select id="ocSym" onchange="loadOC()" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:12px;width:100%">
+          <option>NIFTY</option><option>BANKNIFTY</option><option>FINNIFTY</option><option>MIDCPNIFTY</option><option>SENSEX</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:80px">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:3px;font-weight:700">EXPIRY</div>
+        <select id="ocExp" onchange="loadOC()" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:12px;width:100%">
+          <option>Loading…</option>
+        </select>
+      </div>
+      <button onclick="loadOC()" style="padding:6px 11px;border-radius:7px;border:1px solid var(--purple);background:transparent;color:var(--purple);font-size:11px;font-weight:700;cursor:pointer;align-self:flex-end;margin-bottom:1px">⟳</button>
+    </div>
+    <div id="ocSt" style="font-size:9px;color:var(--text3);margin-top:5px">Tap a row → auto-fills symbol, strike, expiry, LTP in order form</div>
+  </div>
+  <div style="overflow-y:auto;flex:1;-webkit-overflow-scrolling:touch">
+    <div class="oc-wrap">
+      <table class="oc-tbl">
+        <thead>
+          <tr><th colspan="4" style="color:#60a5fa;background:#0d1e35">CE — Calls</th><th style="background:#1a0a2e;color:var(--purple)">Strike</th><th colspan="4" style="color:#f87171;background:#1c0a0a">PE — Puts</th></tr>
+          <tr><th>OI</th><th>Δ OI</th><th>Vol</th><th>LTP</th><th style="background:#1a0a2e">Strike</th><th>LTP</th><th>Vol</th><th>Δ OI</th><th>OI</th></tr>
+        </thead>
+        <tbody id="ocBody"><tr><td colspan="9" style="padding:18px;color:var(--text3)">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- EDIT POSITION MODAL -->
+<div class="overlay" id="editModal">
+<div class="mbox" style="padding:0">
+  <div style="padding:12px 14px;background:var(--amber-bg);border-radius:18px 18px 0 0;border-bottom:1px solid #92400e">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:14px;font-weight:700;color:var(--amber)">✏️ Edit Position</div>
+      <button onclick="closeModal('editModal')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer">✕</button>
+    </div>
+    <div id="editName" style="font-size:10px;color:var(--text3);margin-top:3px"></div>
+  </div>
+  <div style="padding:14px">
+    <div style="margin-bottom:13px">
+      <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:7px">🎯 Target Price</div>
+      <div style="display:flex;gap:7px;align-items:center">
+        <input class="ei" id="eTgt" placeholder="₹ Target" type="number" style="flex:1"/>
+        <button onclick="saveEdit('target')" style="padding:5px 11px;border-radius:6px;border:none;background:var(--green-dim);color:var(--green);font-size:10px;font-weight:700;cursor:pointer">Save</button>
+        <button onclick="saveEdit('target','rm')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text3);font-size:10px;cursor:pointer">✕</button>
+      </div>
+    </div>
+    <div style="margin-bottom:13px">
+      <div style="font-size:11px;font-weight:700;color:var(--red);margin-bottom:7px">🛑 Stoploss Price</div>
+      <div style="display:flex;gap:7px;align-items:center">
+        <input class="ei" id="eSL" placeholder="₹ Stoploss" type="number" style="flex:1"/>
+        <button onclick="saveEdit('sl')" style="padding:5px 11px;border-radius:6px;border:none;background:var(--red-dim);color:var(--red);font-size:10px;font-weight:700;cursor:pointer">Save</button>
+        <button onclick="saveEdit('sl','rm')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text3);font-size:10px;cursor:pointer">✕</button>
+      </div>
+    </div>
+    <div style="margin-bottom:13px">
+      <div style="font-size:11px;font-weight:700;color:var(--amber);margin-bottom:5px">📉 Trailing SL (points)</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:6px">SL moves automatically as price moves in your favour. e.g. 20 pts trail.</div>
+      <div style="display:flex;gap:7px;align-items:center">
+        <input class="ei" id="eTSL" placeholder="Trail pts (0=off)" type="number" min="0" style="flex:1"/>
+        <button onclick="saveEdit('tsl')" style="padding:5px 11px;border-radius:6px;border:none;background:var(--amber-bg);color:var(--amber);font-size:10px;font-weight:700;cursor:pointer;border:1px solid #92400e">Save</button>
+        <button onclick="saveEdit('tsl','rm')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text3);font-size:10px;cursor:pointer">Off</button>
+      </div>
+    </div>
+    <div id="editVals" style="background:var(--bg);border-radius:8px;padding:9px;font-size:11px;line-height:1.9;color:var(--text2)"></div>
+    <button onclick="closePos(editId)" style="width:100%;margin-top:13px;padding:10px;border-radius:9px;border:1px solid var(--red-dim);background:var(--red-bg);color:var(--red);font-size:13px;font-weight:700;cursor:pointer" id="editCloseBtn">🔴 Close Position</button>
+  </div>
+</div>
+</div>
+
+<script>
+// ================================================================
+// CONSTANTS — Hardcoded Fyers credentials (your trading bot)
+// ================================================================
+const FYERS_APP_ID  = '5WESGP23O5-200';
+const FYERS_SECRET  = 'SujPC5mIX0r20rv1';
+const FYERS_REDIR   = 'https://trade.fyers.in/api-login/redirect-uri/index.html';
+
+// Correct NSE/NFO lot sizes as of 2026
+const LOT_SIZE = {
+  NIFTY:65, BANKNIFTY:30, FINNIFTY:60, MIDCPNIFTY:120,
+  SENSEX:20, BANKEX:30,
+  // Equity futures default
+  DEFAULT:1
+};
+
+// Fallback F&O stock list — used only if the live fetch from NSE (via the
+// server) fails. NSE revises the F&O list roughly every 6 months, so this
+// snapshot can go stale; edit it directly in the Stock Analysis panel if so.
+const FNO_STOCKS_FALLBACK=['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','SBIN','BHARTIARTL','ITC','KOTAKBANK','LT','AXISBANK','BAJFINANCE','ASIANPAINT','MARUTI','HCLTECH','SUNPHARMA','TITAN','ULTRACEMCO','WIPRO','NESTLEIND','ADANIENT','ADANIPORTS','TATASTEEL','TATAMOTORS','TECHM','POWERGRID','NTPC','JSWSTEEL','M&M','BAJAJFINSV','HINDUNILVR','GRASIM','CIPLA','DRREDDY','EICHERMOT','COALINDIA','BPCL','IOC','ONGC','HEROMOTOCO','DIVISLAB','BRITANNIA','SHREECEM','UPL','APOLLOHOSP','TATACONSUM','INDUSINDBK','SBILIFE','HDFCLIFE','BAJAJ-AUTO','VEDANTA','GAIL','PIDILITIND','DABUR','GODREJCP','HAVELLS','SIEMENS','DLF','AMBUJACEM','ACC','BANKBARODA','PNB','CANBK','IDFCFIRSTB','FEDERALBNK','AUBANK','BANDHANBNK','CHOLAFIN','LICHSGFIN','MUTHOOTFIN','PFC','RECLTD','MANAPPURAM','BIOCON','LUPIN','AUROPHARMA','ALKEM','TORNTPHARM','GLENMARK','ZYDUSLIFE','LAURUSLABS','IPCALAB','ASHOKLEY','TVSMOTOR','BALKRISIND','MRF','MOTHERSON','BOSCHLTD','EXIDEIND','BHARATFORG','CUMMINSIND','ESCORTS','SAIL','JINDALSTEL','NMDC','HINDALCO','NATIONALUM','APLAPOLLO','BHEL','BEL','HAL','MAZDOCK','COCHINSHIP','SOLARINDS','ABB','CGPOWER','POLYCAB','KEI','VOLTAS','BLUESTARCO','WHIRLPOOL','CROMPTON','DIXON','AMBER','KAYNES','TATAELXSI','LTIM','LTTS','PERSISTENT','COFORGE','MPHASIS','OFSS','NAUKRI','ZOMATO','NYKAA','PAYTM','POLICYBZR','IRCTC','INDIGO','TRENT','DMART','JUBLFOOD','PAGEIND','ABFRL','VBL','MCDOWELL-N','COLPAL','MARICO','EMAMILTD','BATAINDIA','RELAXO','CANFINHOME','SUNDARMFIN','BAJAJHLDNG','ICICIGI','ICICIPRULI','MFSL','GICRE','MAXHEALTH','FORTIS','LALPATHLAB','SYNGENE','GLAND','SUPREMEIND','ASTRAL','GUJGASLTD','IGL','PETRONET','GSPL','OIL','MGL','CONCOR','GMRINFRA','ADANIGREEN','ADANIENSOL','ADANIPOWER','TATAPOWER','JSWENERGY','NHPC','SJVN','TORNTPOWER','CESC','IEX','RVNL','IRFC','IREDA','HUDCO','NBCC','NCC','KEC','KALYANKJIL','TITAGARH','JYOTHYLAB','UBL','RADICO','ZEEL','SUNTV','PVRINOX','DELHIVERY','CDSL','BSE','MCX','ANGELONE','CAMS','INDIAMART','CYIENT','SONACOMS','SUZLON','INOXWIND'];
+
+function getLotSize(sym){ return LOT_SIZE[sym.toUpperCase()]||LOT_SIZE.DEFAULT; }
+
+// ================================================================
+// STATE
+// ================================================================
+let ST = {
+  mode:'paper', capital:200000, seg:'EQ', bs:'BUY', filt:'ALL',
+  wl:[], pos:[], hist:[], orders:[],
+  fyToken:'', fyUser:'',
+  prices:{}, histFilter:'ALL'
+};
+let editId=null;
+let authUrl='';
+let liveFeedTmr=null, livePosSyncTmr=null;
+
+// ================================================================
+// STORAGE — localStorage (persists across sessions on same device)
+// ================================================================
+function save(){ try{ localStorage.setItem('tb_v5', JSON.stringify(ST)); }catch(e){} }
+function load(){
+  try{
+    const d=localStorage.getItem('tb_v5');
+    if(d){ const p=JSON.parse(d); Object.assign(ST,p); }
+  }catch(e){}
+}
+
+load();
+if(!ST.wl||!ST.wl.length){
+  ST.wl=[
+    {sym:'RELIANCE',seg:'EQ',ltp:2845.6,chg:1.24},
+    {sym:'NIFTY',seg:'FUT',ltp:24416,chg:-0.21},
+    {sym:'HDFCBANK',seg:'EQ',ltp:1672.3,chg:0.72},
+    {sym:'BANKNIFTY',seg:'FUT',ltp:52012,chg:-0.38},
+  ];
+  save();
+}
+document.getElementById('sCap').value=ST.capital;
+document.getElementById('sTok').value=ST.fyToken||'';
+
+renderAll(); simPrices(); drawChart(); updLoginBtn();
+if(ST.fyToken) startLiveFeed();
+
+// ================================================================
+// FYERS LOGIN — mirrors Python nifty_oi_tracker.py flow exactly
+// App ID + Secret hardcoded, user just does step 2+3
+// ================================================================
+function showLogin(){
+  openModal('loginModal');
+  const bar=document.getElementById('tokBar');
+  if(ST.fyToken){
+    bar.style.display='block';
+    document.getElementById('tokUser').textContent=ST.fyUser||'Connected';
+    document.getElementById('tokSnip').textContent='Token: '+ST.fyToken.substring(0,55)+'…';
+  } else {
+    bar.style.display='none';
+  }
+}
+
+// Step 2a: Generate auth URL (mirrors generate_auth_url())
+function genUrl(){
+  authUrl=`https://api-t1.fyers.in/api/v3/generate-authcode?`+
+    `client_id=${encodeURIComponent(FYERS_APP_ID)}`+
+    `&redirect_uri=${encodeURIComponent(FYERS_REDIR)}`+
+    `&response_type=code&state=TradeBook`;
+  const box=document.getElementById('urlBox');
+  box.style.display='block'; box.textContent=authUrl;
+  setFst('st2','✅ URL ready — tap "Open Browser" →','fok');
+}
+
+// Step 2b: Open browser
+function openUrl(){
+  if(!authUrl){ genUrl(); setTimeout(openUrl,400); return; }
+  window.open(authUrl,'_blank');
+  setFst('st2','🌐 Browser opened. Login on Fyers, then copy the redirect URL into Step 3 below.','finfo');
+}
+
+// Step 3: Extract auth_code + exchange for token
+// Mirrors Python: _extract_auth_code() + session.generate_token()
+// Fixes error -441: sends appIdHash = SHA256(app_id:secret_key)
+async function submitCode(){
+  const raw=document.getElementById('redirUrl').value.trim();
+  if(!raw){ setFst('st3','⚠️ Paste the redirect URL first','ferr'); return; }
+
+  // Extract auth_code — mirrors Python _extract_auth_code()
+  let code=null;
+  try{ const u=new URL(raw); code=u.searchParams.get('auth_code')||u.searchParams.get('code'); }catch(e){}
+  if(!code){ const m=raw.match(/auth_code=([^&\s]+)/); if(m) code=m[1]; }
+  if(!code){ setFst('st3','❌ auth_code not found in URL. Copy the FULL redirect URL from address bar.','ferr'); return; }
+
+  const btn=document.getElementById('submitBtn');
+  btn.disabled=true; btn.textContent='⏳ Getting token…';
+  setFst('st3','⏳ Computing hash + exchanging code for token…','finfo');
+
+  try{
+    // SHA256(app_id:secret_key) — fixes Fyers error -441
+    const hashBuf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(FYERS_APP_ID+':'+FYERS_SECRET));
+    const appIdHash=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+
+    const resp=await fetch('https://api-t1.fyers.in/api/v3/validate-authcode',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ grant_type:'authorization_code', appIdHash, code })
+    });
+    const data=await resp.json();
+
+    if(data.s==='ok' && data.access_token){
+      ST.fyToken=data.access_token;
+      ST.fyUser=data.fy_id||data.user_id||'Fyers';
+      save();
+      document.getElementById('sTok').value=data.access_token;
+      setFst('st3','✅ Login successful! Token saved. Ready for live data & orders.','fok');
+      updLoginBtn();
+      startLiveFeed();
+      document.getElementById('tokBar').style.display='block';
+      document.getElementById('tokUser').textContent=ST.fyUser;
+      document.getElementById('tokSnip').textContent='Token: '+data.access_token.substring(0,60)+'…';
+      showToast('✅ Fyers login successful! Live prices starting…');
+      setTimeout(()=>closeModal('loginModal'),2200);
+    } else {
+      const ec=data.code||data.error_code||'?';
+      const em=data.message||data.error||JSON.stringify(data);
+      const hints={'-301':'Auth code expired — tap Generate URL again quickly.','-302':'Auth code already used — tap Generate URL for a fresh one.','-300':'Invalid App ID or Secret.','-441':'App ID hash missing — should be auto-fixed now. Try again.'};
+      const h=hints[String(ec)]||'';
+      setFst('st3','❌ Fyers error '+ec+': '+em+(h?'\n💡 '+h:''),'ferr');
+    }
+  }catch(e){
+    let msg=e.message||String(e);
+    if(msg.includes('fetch')||msg.includes('Failed')||msg.includes('CORS')) msg='Network/CORS error. Use a mobile browser or try from PC browser on Fyers site.';
+    setFst('st3','❌ '+msg,'ferr');
+  }finally{
+    btn.disabled=false; btn.textContent='✅ Submit → Get Token';
+  }
+}
+
+function fyersLogout(){
+  ST.fyToken=''; ST.fyUser=''; save();
+  document.getElementById('sTok').value='';
+  document.getElementById('tokBar').style.display='none';
+  stopLiveFeed();
+  if(ST.mode==='live') setMode('paper');
+  updLoginBtn(); showToast('Logged out'); closeModal('loginModal');
+}
+
+function setFst(id,msg,cls){
+  const el=document.getElementById(id);
+  el.className='fs '+cls; el.textContent=msg;
+}
+
+function updLoginBtn(){
+  const btn=document.getElementById('loginBtn');
+  const dot=document.getElementById('apiDot');
+  const st=document.getElementById('apiSt');
+  if(ST.fyToken){
+    btn.textContent='✅ '+(ST.fyUser||'Fyers');
+    btn.style.cssText='padding:4px 10px;border-radius:13px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:var(--green-dim);color:var(--green)';
+    dot.className='dot live'; st.textContent='Live';
+  } else {
+    btn.textContent='🔑 Login';
+    btn.style.cssText='padding:4px 10px;border-radius:13px;font-size:10px;font-weight:700;border:none;cursor:pointer;background:var(--blue-bg);color:var(--blue)';
+    dot.className='dot paper'; st.textContent='Paper';
+  }
+}
+
+// ================================================================
+// OI TRACKER
+// ================================================================
+// ================================================================
+// STOCK ANALYSIS — F&O breadth scanner (RVI-based)
+// ================================================================
+let breadthResults=[]; // [{sym, byTf:{'1':{rvi,sig,bullish}, ...}, pdc,pdh,pdl,ltp}]
+let breadthScanning=false;
+let fnoList=null; // resolved once per session
+
+async function getFnoList(){
+  if(fnoList) return fnoList;
+  try{
+    const r=await fetch('/api/fno-list');
+    const d=await r.json();
+    if(d.s==='ok'&&d.symbols&&d.symbols.length>20){ fnoList=d.symbols; return fnoList; }
+  }catch(e){ /* fall through to bundled list */ }
+  fnoList=FNO_STOCKS_FALLBACK.slice();
+  return fnoList;
+}
+
+// Simple moving average, returns null where insufficient history
+function smaSeries(arr,period){
+  const out=new Array(arr.length).fill(null);
+  for(let i=period-1;i<arr.length;i++){
+    let sum=0,bad=false;
+    for(let k=i-period+1;k<=i;k++){ if(arr[k]==null){bad=true;break;} sum+=arr[k]; }
+    if(!bad) out[i]=sum/period;
+  }
+  return out;
+}
+
+// Standard RVI: NUM/DEN use a 4-bar symmetric weighting of (close-open) and
+// (high-low), each smoothed by an N-period SMA (rviLen), then the RVI line
+// itself is smoothed by an SMA (sigLen) to form the signal line.
+function calcRVI(candles,rviLen,sigLen){
+  const n=candles.length;
+  const num=new Array(n).fill(null), den=new Array(n).fill(null);
+  for(let i=3;i<n;i++){
+    const a=candles[i].c-candles[i].o, b=candles[i-1].c-candles[i-1].o, c=candles[i-2].c-candles[i-2].o, d=candles[i-3].c-candles[i-3].o;
+    num[i]=(a+2*b+2*c+d)/6;
+    const e=candles[i].h-candles[i].l, f=candles[i-1].h-candles[i-1].l, g=candles[i-2].h-candles[i-2].l, h=candles[i-3].h-candles[i-3].l;
+    den[i]=(e+2*f+2*g+h)/6;
+  }
+  const smaNum=smaSeries(num,rviLen), smaDen=smaSeries(den,rviLen);
+  const rvi=smaNum.map((v,i)=>(v!=null&&smaDen[i])?v/smaDen[i]:null);
+  const signal=smaSeries(rvi,sigLen);
+  const last=n-1;
+  return {rvi:rvi[last],signal:signal[last],bullish:(rvi[last]!=null&&signal[last]!=null)?rvi[last]>signal[last]:null};
+}
+
+// Groups 1-minute candles into clock-aligned N-minute buckets
+function resampleCandles(oneMin,everyN){
+  if(everyN===1) return oneMin;
+  const buckets={};
+  const order=[];
+  oneMin.forEach(c=>{
+    const bucketT=Math.floor(c.t/(everyN*60))*everyN*60;
+    if(!buckets[bucketT]){ buckets[bucketT]={t:bucketT,o:c.o,h:c.h,l:c.l,c:c.c,v:c.v}; order.push(bucketT); }
+    else{ const b=buckets[bucketT]; b.h=Math.max(b.h,c.h); b.l=Math.min(b.l,c.l); b.c=c.c; b.v+=c.v; }
+  });
+  return order.map(t=>buckets[t]);
+}
+
+async function fetchHistory(fySymbol,resolution,rangeFrom,rangeTo){
+  const auth=FYERS_APP_ID+':'+ST.fyToken;
+  const url=`/api/history?symbol=${encodeURIComponent(fySymbol)}&resolution=${resolution}&date_format=1&range_from=${rangeFrom}&range_to=${rangeTo}&cont_flag=1`;
+  const r=await fetch(url,{headers:{'Authorization':auth}});
+  const d=await r.json();
+  if(d.s==='error') throw new Error(d.message||'history error');
+  return (d.candles||[]).map(c=>({t:c[0],o:c[1],h:c[2],l:c[3],c:c[4],v:c[5]}));
+}
+
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+async function runBreadthScan(){
+  if(breadthScanning) return;
+  if(!ST.fyToken){ showToast('⚠️ Login to Fyers first'); return; }
+  breadthScanning=true;
+  const btn=document.getElementById('breadthScanBtn'); btn.disabled=true; btn.textContent='⏳ Scanning…';
+  const rviLen=parseInt(document.getElementById('rviLen').value)||99;
+  const rviSig=parseInt(document.getElementById('rviSig').value)||9;
+  const stSt=document.getElementById('breadthSt');
+
+  const list=await getFnoList();
+  breadthResults=[];
+  const today=new Date();
+  const from30=new Date(today); from30.setDate(from30.getDate()-45);
+  const fromDaily=new Date(today); fromDaily.setDate(fromDaily.getDate()-260);
+
+  let done=0;
+  for(const sym of list){
+    stSt.textContent=`Scanning ${sym}… (${done+1}/${list.length})`;
+    try{
+      const fySym='NSE:'+sym+'-EQ';
+      const [oneMin,daily]=await Promise.all([
+        fetchHistory(fySym,'1',ymd(from30),ymd(today)),
+        fetchHistory(fySym,'D',ymd(fromDaily),ymd(today))
+      ]);
+      if(oneMin.length<20||daily.length<5){ done++; continue; }
+      const byTf={};
+      ['1','3','5','15','25','75'].forEach(tf=>{
+        const bars=resampleCandles(oneMin,parseInt(tf));
+        byTf[tf]=calcRVI(bars,rviLen,rviSig);
+      });
+      byTf['D']=calcRVI(daily,rviLen,rviSig);
+      const prevDay=daily[daily.length-2]||daily[daily.length-1];
+      const ltp=oneMin[oneMin.length-1].c;
+      breadthResults.push({sym,byTf,pdc:prevDay.c,pdh:prevDay.h,pdl:prevDay.l,ltp});
+    }catch(e){
+      console.warn('Breadth scan failed for',sym,e.message);
+    }
+    done++;
+    if(done%10===0) renderBreadthTable();
+    await new Promise(res=>setTimeout(res,150)); // gentle pacing to respect rate limits
+  }
+  stSt.textContent=`Scan complete — ${breadthResults.length}/${list.length} stocks · RVI(${rviLen},${rviSig})`;
+  btn.disabled=false; btn.textContent='▶ Scan';
+  breadthScanning=false;
+  renderBreadthTable();
+}
+
+function renderBreadthTable(){
+  const wrap=document.getElementById('breadthTableWrap');
+  if(!breadthResults.length){ wrap.innerHTML=''; return; }
+  const tf=document.getElementById('rviTf').value;
+  let bull=0,bear=0,pdcAbove=0,pdcBelow=0,pdhAbove=0,pdhBelow=0,pdlAbove=0,pdlBelow=0;
+  breadthResults.forEach(r=>{
+    const rv=r.byTf[tf];
+    if(rv&&rv.bullish===true) bull++; else if(rv&&rv.bullish===false) bear++;
+    if(r.ltp>r.pdc) pdcAbove++; else pdcBelow++;
+    if(r.ltp>r.pdh) pdhAbove++; else pdhBelow++;
+    if(r.ltp>r.pdl) pdlAbove++; else pdlBelow++;
+  });
+  wrap.innerHTML=`
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead><tr style="border-bottom:1px solid var(--border)">
+        <th style="text-align:left;padding:5px;color:var(--text3)">RVI Breadth (${tf==='D'?'1 Day':tf+'M'})</th>
+        <th style="padding:5px;color:var(--text3)">PDC</th><th style="padding:5px;color:var(--text3)">PDH</th><th style="padding:5px;color:var(--text3)">PDL</th>
+      </tr></thead>
+      <tbody>
+        <tr><td style="padding:5px;color:var(--green);font-weight:700">Bullish: ${bull}</td><td style="padding:5px;text-align:center;color:var(--green)">Above: ${pdcAbove}</td><td style="padding:5px;text-align:center;color:var(--green)">Above: ${pdhAbove}</td><td style="padding:5px;text-align:center;color:var(--green)">Above: ${pdlAbove}</td></tr>
+        <tr><td style="padding:5px;color:var(--red);font-weight:700">Bearish: ${bear}</td><td style="padding:5px;text-align:center;color:var(--red)">Below: ${pdcBelow}</td><td style="padding:5px;text-align:center;color:var(--red)">Below: ${pdhBelow}</td><td style="padding:5px;text-align:center;color:var(--red)">Below: ${pdlBelow}</td></tr>
+      </tbody>
+    </table>
+    <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">${breadthResults.length} stocks scanned · Edit FNO_STOCKS_FALLBACK in code to adjust the stock list if needed</div>
+  `;
+}
+
+let oiTf=5, oiRows=[], oiTmr=null, oiCd=30;
+
+function setTf(tf,btn){
+  oiTf=tf;
+  document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active'); oiRefresh();
+}
+function oiRefresh(){
+  document.getElementById('oiSt').textContent='Loading…';
+  if(ST.fyToken) loadOILive(); else loadOIDemo();
+}
+function startOiTimer(){
+  if(oiTmr) clearInterval(oiTmr);
+  oiCd=30;
+  oiTmr=setInterval(()=>{
+    oiCd--;
+    document.getElementById('oiTimer').textContent='Next: '+Math.max(oiCd,0)+'s';
+    if(oiCd<=0){ oiCd=30; oiRefresh(); }
+  },1000);
+  oiRefresh();
+}
+
+async function loadOILive(){
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    const r=await fetch('/api/optionchain?symbol=NSE:NIFTY50-INDEX&strikecount=10',{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error') throw new Error(d.message||'API error');
+    const chain=d.data||{};
+    const spot=(chain.optionsChain?.[0]?.ltp)||24000;
+    document.getElementById('oiSpot').textContent='NIFTY: '+spot.toLocaleString('en-IN');
+    const ceI=(chain.optionsChain||[]).filter(x=>x.option_type==='CE').slice(0,8);
+    const peI=(chain.optionsChain||[]).filter(x=>x.option_type==='PE').slice(0,8);
+    const ceC=ceI.reduce((s,x)=>s+(x.oi_change||0),0);
+    const peC=peI.reduce((s,x)=>s+(x.oi_change||0),0);
+    const diff=ceC-peC;
+    const dp=peC?((diff/Math.abs(peC))*100):0;
+    const t=new Date().toTimeString().slice(0,8);
+    oiRows.push({t,spot:spot.toFixed(2),ceC,peC,diff,dp:dp.toFixed(1),dir:diff<0?'UP':'DOWN',sent:diff<0?'Bullish':diff>0?'Bearish':'Neutral'});
+    if(oiRows.length>40) oiRows.shift();
+    renderOI();
+    document.getElementById('oiSt').textContent='Live ✓ ATM:'+(Math.round(spot/50)*50)+' '+t;
+  }catch(e){
+    document.getElementById('oiSt').textContent='⚠️ '+e.message+' — demo shown';
+    loadOIDemo();
+  }
+}
+
+function loadOIDemo(){
+  const spot=24416+Math.round((Math.random()-.5)*200);
+  document.getElementById('oiSpot').textContent='NIFTY: '+spot.toLocaleString('en-IN')+' (demo)';
+  oiRows=[];
+  const now=new Date();
+  for(let i=9;i>=0;i--){
+    const t=new Date(now-i*oiTf*60000).toTimeString().slice(0,8);
+    const ce=Math.round((Math.random()-.4)*4000000);
+    const pe=Math.round((Math.random()-.4)*4000000);
+    const d=ce-pe;
+    const dp=pe?((d/Math.abs(pe))*100):0;
+    oiRows.push({t,spot:(spot+Math.round((Math.random()-.5)*100)).toFixed(2),ceC:ce,peC:pe,diff:d,dp:dp.toFixed(1),dir:d<0?'UP':'DOWN',sent:d<0?'Bullish':d>0?'Bearish':'Neutral'});
+  }
+  renderOI();
+  document.getElementById('oiSt').textContent='DEMO MODE — Login Fyers for live data';
+}
+
+function fmtN(n){
+  const ng=n<0; const v=Math.abs(Math.round(n));
+  let s=v.toString(),r;
+  if(s.length<=3) r=s;
+  else if(s.length<=5) r=s.slice(0,-3)+','+s.slice(-3);
+  else if(s.length<=7) r=s.slice(0,-5)+','+s.slice(-5,-3)+','+s.slice(-3);
+  else r=s.slice(0,-7)+','+s.slice(-7,-5)+','+s.slice(-5,-3)+','+s.slice(-3);
+  return (ng?'-':'')+r;
+}
+
+function renderOI(){
+  const rows=[...oiRows].reverse();
+  const tb=document.getElementById('oiBody');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--text3)">No data</td></tr>';return;}
+  tb.innerHTML=rows.map(r=>{
+    const dn=parseInt(r.diff)<0;const dpn=parseFloat(r.dp)<0;
+    return `<tr>
+      <td style="color:var(--text3)">${r.t.slice(0,5)}</td>
+      <td style="font-weight:600">${r.spot}</td>
+      <td class="bull">${fmtN(r.ceC)}</td>
+      <td class="bear">${fmtN(r.peC)}</td>
+      <td style="font-weight:700;color:${dn?'var(--green)':'var(--red)'}">${fmtN(r.diff)}</td>
+      <td style="font-weight:700;color:${dpn?'var(--green)':'var(--red)'}">${r.dp}%</td>
+      <td><span class="dir-b ${r.dir==='UP'?'du':'dd'}">${r.dir==='UP'?'▲ UP':'▼ DN'}</span></td>
+      <td style="font-weight:700;color:${r.sent==='Bullish'?'var(--green)':r.sent==='Bearish'?'var(--red)':'var(--text3)'}">${r.sent}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ================================================================
+// EXPIRY CALCULATION (weekly + monthly, correct per current NSE/BSE rules)
+// NIFTY: weekly=Tuesday, monthly=last Tuesday
+// SENSEX: weekly=Thursday (BSE), monthly=last Thursday
+// BANKNIFTY/FINNIFTY/MIDCPNIFTY: monthly only (weeklies discontinued), last Tuesday
+// ================================================================
+const NSE_HOLIDAYS_2026=['2026-01-15','2026-01-26','2026-02-15','2026-03-03','2026-03-21','2026-03-26','2026-03-31','2026-04-03','2026-04-14','2026-05-01','2026-05-28','2026-06-26','2026-08-15','2026-09-14','2026-10-02','2026-10-20','2026-11-10','2026-11-24','2026-12-25'];
+function isNonTradingDay(d){
+  const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  return d.getDay()===0||d.getDay()===6||NSE_HOLIDAYS_2026.includes(iso);
+}
+function shiftToPrevTradingDay(d){
+  const r=new Date(d);
+  while(isNonTradingDay(r)) r.setDate(r.getDate()-1);
+  return r;
+}
+function nextWeekdayOnOrAfter(from,weekday){
+  const d=new Date(from); d.setHours(0,0,0,0);
+  const diff=(weekday-d.getDay()+7)%7;
+  d.setDate(d.getDate()+diff);
+  return d;
+}
+function getWeeklyExpiries(weekday,count){
+  const list=[]; let d=nextWeekdayOnOrAfter(new Date(),weekday);
+  for(let i=0;i<count;i++){ list.push(shiftToPrevTradingDay(d)); d=new Date(d); d.setDate(d.getDate()+7); }
+  return list;
+}
+function lastWeekdayOfMonth(year,month,weekday){
+  const d=new Date(year,month+1,0);
+  const diff=(d.getDay()-weekday+7)%7;
+  d.setDate(d.getDate()-diff);
+  return d;
+}
+function getMonthlyExpiries(weekday,count){
+  const list=[]; const today=new Date(); today.setHours(0,0,0,0);
+  let y=today.getFullYear(), m=today.getMonth();
+  while(list.length<count){
+    const e=shiftToPrevTradingDay(lastWeekdayOfMonth(y,m,weekday));
+    if(e>=today) list.push(e);
+    m++; if(m>11){m=0;y++;}
+  }
+  return list;
+}
+function formatExpiry(d){
+  const months=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return String(d.getDate()).padStart(2,'0')+months[d.getMonth()]+d.getFullYear();
+}
+function getExpiryOptions(sym){
+  let entries=[];
+  if(sym==='NIFTY'){
+    entries=entries.concat(getWeeklyExpiries(2,4).map(d=>({d,label:'Weekly'})));
+    entries=entries.concat(getMonthlyExpiries(2,3).map(d=>({d,label:'Monthly'})));
+  }else if(sym==='SENSEX'){
+    entries=entries.concat(getWeeklyExpiries(4,4).map(d=>({d,label:'Weekly'})));
+    entries=entries.concat(getMonthlyExpiries(4,3).map(d=>({d,label:'Monthly'})));
+  }else{
+    entries=entries.concat(getMonthlyExpiries(2,4).map(d=>({d,label:'Monthly'})));
+  }
+  const seen=new Set();
+  const uniq=entries.filter(e=>{ const k=e.d.toDateString(); if(seen.has(k)) return false; seen.add(k); return true; });
+  uniq.sort((a,b)=>a.d-b.d);
+  return uniq.map(e=>({str:formatExpiry(e.d),label:e.label}));
+}
+function populateExpiries(){
+  const sym=document.getElementById('ocSym').value;
+  const sel=document.getElementById('ocExp');
+  const prev=sel.value;
+  const opts=getExpiryOptions(sym);
+  sel.innerHTML=opts.map(o=>`<option value="${o.str}">${o.str} — ${o.label}</option>`).join('');
+  if(opts.some(o=>o.str===prev)) sel.value=prev;
+}
+
+// ================================================================
+// COC — cvaji Option Chain (3m CE/PE meeting-point board)
+// MAP  = last price where CE & PE 3m candle ranges overlapped ("met")
+// MPH/MPL = that same candle's merged (CE∪PE) high/low
+// SNI  = one-strike-OTM CE prev-day-close + one-strike-OTM PE prev-day-close, /2
+//        e.g. for the 24000 strike: (24050 CE PDC + 23950 PE PDC) / 2
+// Highlight: CE green if CE LTP > SNI · PE red if PE LTP < SNI
+//            Day High green if Open==High · Day Low red if Open==Low
+// ================================================================
+const COC_STEP={NIFTY:50,BANKNIFTY:100,FINNIFTY:50,MIDCPNIFTY:25,SENSEX:100,BANKEX:100};
+const COC_IDX={NIFTY:'NSE:NIFTY50-INDEX',BANKNIFTY:'NSE:NIFTYBANK-INDEX',FINNIFTY:'NSE:FINNIFTY-INDEX',MIDCPNIFTY:'NSE:MIDCPNIFTY-INDEX',SENSEX:'BSE:SENSEX-INDEX',BANKEX:'BSE:BANKEX-INDEX'};
+let cocScanning=false, cocData=[];
+
+function populateCocExpiries(){
+  const sym=document.getElementById('cocSym').value;
+  const sel=document.getElementById('cocExp');
+  const prev=sel.value;
+  const opts=getExpiryOptions(sym);
+  sel.innerHTML=opts.map(o=>`<option value="${o.str}">${o.str} — ${o.label}</option>`).join('');
+  if(opts.some(o=>o.str===prev)) sel.value=prev;
+}
+
+async function runCocScan(){
+  if(cocScanning) return;
+  if(!ST.fyToken){ showToast('⚠️ Login to Fyers first'); return; }
+  if(!document.getElementById('cocExp').value) populateCocExpiries();
+  cocScanning=true;
+  const btn=document.getElementById('cocScanBtn'); btn.disabled=true; btn.textContent='⏳ Scanning…';
+  const stSt=document.getElementById('cocSt'); stSt.style.color='var(--text3)';
+  const sym=document.getElementById('cocSym').value;
+  const exp=document.getElementById('cocExp').value;
+  const step=COC_STEP[sym]||50;
+  const today=new Date();
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    const baseSymbol=COC_IDX[sym]||COC_IDX.NIFTY;
+    const wantDate=expiryStrToDDMMYYYY(exp);
+
+    stSt.textContent='Resolving expiry…';
+    const rList=await fetch('/api/optionchain?symbol='+baseSymbol+'&strikecount=1',{headers:{'Authorization':auth}});
+    const dList=await rList.json();
+    if(dList.s==='error') throw new Error(dList.message||'error fetching expiry list');
+    const expiryData=dList.data?.expiryData||[];
+    const match=expiryData.find(e=>e.date===wantDate);
+    const ts=match?match.expiry:'';
+
+    stSt.textContent='Loading chain…';
+    let url='/api/optionchain?symbol='+baseSymbol+'&strikecount=13'; // buffer beyond ATM±5 so OTM-neighbor SNI lookups always resolve
+    if(ts) url+='&timestamp='+ts;
+    const r=await fetch(url,{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error') throw new Error(d.message||'error');
+    const chain=d.data?.optionsChain||[];
+    if(!chain.length) throw new Error('No chain data — market may be closed or expiry mismatch');
+    const spot=chain[0]?.ltp||0;
+    const atm=Math.round(spot/step)*step;
+    const cm={},pm={};
+    chain.forEach(x=>{ if(x.option_type==='CE') cm[x.strike_price]=x; else if(x.option_type==='PE') pm[x.strike_price]=x; });
+
+    // Day Open/High/Low of the underlying spot
+    let dayO=0,dayH=0,dayL=0;
+    try{
+      const dayHist=await fetchHistory(baseSymbol,'1',ymd(today),ymd(today));
+      if(dayHist.length){ dayO=dayHist[0].o; dayH=Math.max(...dayHist.map(c=>c.h)); dayL=Math.min(...dayHist.map(c=>c.l)); }
+    }catch(e){ console.warn('COC day O/H/L fetch failed:',e.message); }
+    const oh=dayO&&dayO===dayH, ol=dayO&&dayO===dayL;
+    document.getElementById('cocDayStrip').innerHTML=`
+      <span>Spot: <b>${spot.toFixed(2)}</b></span>
+      <span>ATM: <b style="color:var(--amber)">${atm}</b></span>
+      <span>O: <b>${dayO.toFixed(2)}</b></span>
+      <span style="${oh?'color:var(--green);font-weight:700':''}">H: ${dayH.toFixed(2)}${oh?' (O=H)':''}</span>
+      <span style="${ol?'color:var(--red);font-weight:700':''}">L: ${dayL.toFixed(2)}${ol?' (O=L)':''}</span>
+    `;
+
+    const strikes=[]; for(let i=-5;i<=5;i++) strikes.push(atm+i*step);
+    const pdcFrom=new Date(today.getTime()-6*86400000);
+    cocData=strikes.map(s=>({strike:s,ceLtp:null,peLtp:null,map:null,mph:null,mpl:null,mpTime:null,sni:null,isAtm:s===atm}));
+    renderCocTable();
+
+    let done=0;
+    for(const s of strikes){
+      const row=cocData.find(x=>x.strike===s);
+      const ce=cm[s], pe=pm[s];
+      const ceOtm=cm[s+step], peOtm=pm[s-step]; // one-strike-OTM neighbors for SNI
+      row.ceLtp=ce?.ltp!=null?ce.ltp:null;
+      row.peLtp=pe?.ltp!=null?pe.ltp:null;
+      try{
+        if(ce?.symbol && pe?.symbol){
+          const [ce1m,pe1m]=await Promise.all([
+            fetchHistory(ce.symbol,'1',ymd(today),ymd(today)),
+            fetchHistory(pe.symbol,'1',ymd(today),ymd(today))
+          ]);
+          const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
+          const n=Math.min(ce3.length,pe3.length);
+          for(let i=n-1;i>=0;i--){
+            const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
+            if(lo<=hi){ row.map=(lo+hi)/2; row.mph=hi; row.mpl=lo; row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5); break; }
+          }
+        }
+        if(ceOtm?.symbol && peOtm?.symbol){
+          const [ceD,peD]=await Promise.all([
+            fetchHistory(ceOtm.symbol,'D',ymd(pdcFrom),ymd(today)),
+            fetchHistory(peOtm.symbol,'D',ymd(pdcFrom),ymd(today))
+          ]);
+          const cePdc=ceD.length?(ceD[ceD.length-2]||ceD[ceD.length-1]).c:null;
+          const pePdc=peD.length?(peD[peD.length-2]||peD[peD.length-1]).c:null;
+          if(cePdc!=null && pePdc!=null) row.sni=(cePdc+pePdc)/2;
+        }
+      }catch(e){ console.warn('COC row failed for',s,e.message); }
+      done++;
+      stSt.textContent=`Fetching CE/PE 3m + PDC… (${done}/${strikes.length})`;
+      renderCocTable();
+      await new Promise(res=>setTimeout(res,150)); // gentle pacing to respect Fyers rate limits
+    }
+    stSt.textContent=`Scan complete — ${sym} ${exp} · ATM ${atm} · Spot ${spot.toFixed(2)}`;
+  }catch(e){
+    stSt.textContent='⚠️ '+e.message;
+    stSt.style.color='var(--red)';
+    console.error('COC scan failed:',e);
+  }
+  btn.disabled=false; btn.textContent='▶ Scan';
+  cocScanning=false;
+}
+
+function renderCocTable(){
+  const body=document.getElementById('cocBody');
+  if(!cocData.length){ body.innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr>'; return; }
+  body.innerHTML=cocData.map(r=>{
+    const ceGreen = r.sni!=null && r.ceLtp!=null && r.ceLtp>r.sni;
+    const peRed   = r.sni!=null && r.peLtp!=null && r.peLtp<r.sni;
+    return `<tr style="${r.isAtm?'background:var(--amber-bg)':''}">
+      <td style="padding:5px;font-weight:700;${r.isAtm?'color:var(--amber)':''}">${r.strike}${r.isAtm?' <span style="font-size:8px">ATM</span>':''}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;${ceGreen?'color:var(--green);background:var(--green-bg)':''}">${r.ceLtp!=null?'₹'+parseFloat(r.ceLtp).toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center">${r.map!=null?r.map.toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center">${r.mph!=null?r.mph.toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center">${r.mpl!=null?r.mpl.toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;color:var(--purple)">${r.sni!=null?r.sni.toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;${peRed?'color:var(--red);background:var(--red-bg)':''}">${r.peLtp!=null?'₹'+parseFloat(r.peLtp).toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center;color:var(--text3)">${r.mpTime||'—'}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ================================================================
+// OPTION CHAIN
+// ================================================================
+function loadOC(){
+  populateExpiries();
+  const sym=document.getElementById('ocSym').value;
+  const exp=document.getElementById('ocExp').value;
+  document.getElementById('ocSt').textContent='Loading '+sym+'…';
+  if(ST.fyToken) loadOCLive(sym,exp); else loadOCDemo(sym,exp);
+}
+
+async function loadOCLive(sym,exp){
+  const idx={NIFTY:'NSE:NIFTY50-INDEX',BANKNIFTY:'NSE:NIFTYBANK-INDEX',FINNIFTY:'NSE:FINNIFTY-INDEX',MIDCPNIFTY:'NSE:MIDCPNIFTY-INDEX',SENSEX:'BSE:SENSEX-INDEX'};
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    const baseSymbol=idx[sym]||idx.NIFTY;
+    const wantDate=expiryStrToDDMMYYYY(exp);
+
+    // Step 1: fetch Fyers' own expiry list (exact epoch per expiry) — calling
+    // with no/blank timestamp returns this list rather than strike data.
+    const rList=await fetch('/api/optionchain?symbol='+baseSymbol+'&strikecount=1',{headers:{'Authorization':auth}});
+    const dList=await rList.json();
+    if(dList.s==='error') throw new Error(dList.message||'error fetching expiry list');
+    const expiryData=dList.data?.expiryData||[];
+    const match=expiryData.find(e=>e.date===wantDate);
+    const ts=match?match.expiry:'';
+
+    // Step 2: fetch the actual chain using Fyers' own exact expiry timestamp
+    let url='/api/optionchain?symbol='+baseSymbol+'&strikecount=15';
+    if(ts) url+='&timestamp='+ts;
+    const r=await fetch(url,{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error') throw new Error(d.message||'error');
+    const chain=d.data?.optionsChain||[];
+    if(!chain.length) throw new Error('No chain data returned for '+wantDate+(match?'':' (expiry not found in list — market may be closed or date mismatch)'));
+    const spot=chain[0]?.ltp||24000;
+    const atm=Math.round(spot/50)*50;
+    const cm={},pm={};
+    chain.forEach(x=>{ if(x.option_type==='CE') cm[x.strike_price]=x; else if(x.option_type==='PE') pm[x.strike_price]=x; });
+    const strikes=[...new Set(chain.map(x=>x.strike_price))].sort((a,b)=>a-b);
+    renderOC(strikes,cm,pm,atm,spot,sym,exp);
+    document.getElementById('ocSt').textContent=sym+' Spot:'+spot.toFixed(2)+' ATM:'+atm+' · LIVE';
+  }catch(e){
+    loadOCDemo(sym,exp);
+    document.getElementById('ocSt').textContent='⚠️ LIVE FAILED: '+e.message+' — showing DEMO data below';
+    document.getElementById('ocSt').style.color='var(--red)';
+    console.error('Option chain live fetch failed:',e);
+  }
+}
+
+// Converts our "DDMMMYYYY" expiry string (e.g. 07JUL2026) to Fyers' expiryData
+// date format "DD-MM-YYYY" (e.g. 07-07-2026) for matching against their list.
+function expiryStrToDDMMYYYY(exp){
+  const m=/^(\d{2})([A-Z]{3})(\d{4})$/.exec(exp||'');
+  if(!m) return '';
+  const months={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
+  const mo=months[m[2]]; if(!mo) return '';
+  return `${m[1]}-${mo}-${m[3]}`;
+}
+
+function loadOCDemo(sym,exp){
+  const bases={NIFTY:24416,BANKNIFTY:52012,FINNIFTY:23870,MIDCPNIFTY:12200,SENSEX:80576};
+  const steps={NIFTY:50,BANKNIFTY:100,FINNIFTY:50,MIDCPNIFTY:25,SENSEX:100};
+  const base=bases[sym]||24416; const st=steps[sym]||50;
+  const atm=Math.round(base/st)*st;
+  const cm={},pm={},strikes=[];
+  for(let i=-12;i<=12;i++){
+    const s=atm+i*st; strikes.push(s);
+    const dist=Math.abs(i);
+    cm[s]={ltp:Math.max(2,(12-dist)*55+Math.random()*25).toFixed(1),oi:Math.round((14-dist)*500000+Math.random()*200000),oi_change:Math.round((Math.random()-.4)*50000),volume:Math.round(Math.random()*180000)};
+    pm[s]={ltp:Math.max(2,(12-dist)*55+Math.random()*25).toFixed(1),oi:Math.round((14-dist)*500000+Math.random()*200000),oi_change:Math.round((Math.random()-.4)*50000),volume:Math.round(Math.random()*180000)};
+  }
+  renderOC(strikes,cm,pm,atm,base,sym,exp);
+  document.getElementById('ocSt').textContent=sym+' DEMO ATM:'+atm+' | Tap to fill order';
+}
+
+let ocData={}; // strike -> {ce:{...}, pe:{...}}, ocMeta -> {sym, exp}
+let ocMeta={sym:'',exp:''};
+
+function renderOC(strikes,cm,pm,atm,spot,sym,exp){
+  ocMeta={sym,exp};
+  ocData={};
+  document.getElementById('ocBody').innerHTML=strikes.map(s=>{
+    const ce=cm[s]||{};const pe=pm[s]||{};const isAtm=s===atm;
+    ocData[s]={ce,pe};
+    return `<tr class="${isAtm?'atm':''}">
+      <td class="cec" style="font-size:9px;cursor:pointer" onclick="pickStrike(${s},'CE')">${fmtN(ce.oi||0)}</td>
+      <td class="cec" style="font-size:9px;cursor:pointer" onclick="pickStrike(${s},'CE')">${fmtN(ce.oi_change||0)}</td>
+      <td class="cec" style="font-size:9px;cursor:pointer" onclick="pickStrike(${s},'CE')">${fmtN(ce.volume||0)}</td>
+      <td class="cec" style="font-weight:700;cursor:pointer" onclick="pickStrike(${s},'CE')">₹${parseFloat(ce.ltp||0).toFixed(1)}</td>
+      <td class="stk" style="background:#1a0a2e;cursor:pointer" onclick="pickStrike(${s},'CE')">${s}${isAtm?'<br><span style="font-size:8px;color:var(--amber)">ATM</span>':''}</td>
+      <td class="pec" style="font-weight:700;cursor:pointer" onclick="pickStrike(${s},'PE')">₹${parseFloat(pe.ltp||0).toFixed(1)}</td>
+      <td class="pec" style="font-size:9px;cursor:pointer" onclick="pickStrike(${s},'PE')">${fmtN(pe.volume||0)}</td>
+      <td class="pec" style="font-size:9px;cursor:pointer" onclick="pickStrike(${s},'PE')">${fmtN(pe.oi_change||0)}</td>
+      <td class="pec" style="font-size:9px;cursor:pointer" onclick="pickStrike(${s},'PE')">${fmtN(pe.oi||0)}</td>
+    </tr>`;
+  }).join('');
+}
+
+function pickStrike(strike,otype){
+  const row=ocData[strike]; if(!row) return;
+  const {sym,exp}=ocMeta;
+  const ce=row.ce||{},pe=row.pe||{};
+  const ceLtp=ce.ltp||0, peLtp=pe.ltp||0;
+  document.getElementById('oTyp').value=otype;
+  document.getElementById('oStk').value=strike;
+  document.getElementById('oExp').value=exp;
+  document.getElementById('fSym').value=sym;
+  document.getElementById('fExch').value='NFO';
+  // Capture the exact broker-side trading symbol (when available from a live chain) so
+  // live orders use the real Fyers symbol instead of a manually-guessed one.
+  window.pickedOpt={strike,sym,exp,ceFySym:ce.symbol||ce.fy_symbol||ce.tradingsymbol||'',peFySym:pe.symbol||pe.fy_symbol||pe.tradingsymbol||'',ceLtp,peLtp};
+  const ltp=otype==='CE'?ceLtp:peLtp;
+  if(ltp>0) document.getElementById('fPrice').value=parseFloat(ltp).toFixed(2);
+  // Show lot size
+  const ls=getLotSize(sym);
+  document.getElementById('oLotSz').value=ls+' shares/lot';
+  const info=document.getElementById('selStrikeInfo');
+  info.style.display='block';
+  info.textContent='✅ '+sym+' '+exp+' '+strike+otype+' | CE ₹'+parseFloat(ceLtp).toFixed(2)+' | PE ₹'+parseFloat(peLtp).toFixed(2)+' | Lot:'+ls;
+  closeModal('ocModal');
+  showToast('Strike '+strike+' '+otype+' selected');
+  updateOrderSummary();
+}
+
+// ================================================================
+// ORDER FORM
+// ================================================================
+function onOTypChg(){
+  const p=window.pickedOpt; if(!p) return;
+  const otype=document.getElementById('oTyp').value;
+  const ltp=otype==='CE'?p.ceLtp:p.peLtp;
+  if(ltp>0) document.getElementById('fPrice').value=parseFloat(ltp).toFixed(2);
+  const info=document.getElementById('selStrikeInfo');
+  if(info.style.display==='block') info.textContent='✅ '+p.sym+' '+p.exp+' '+p.strike+otype+' | CE ₹'+parseFloat(p.ceLtp).toFixed(2)+' | PE ₹'+parseFloat(p.peLtp).toFixed(2);
+}
+function setSeg(s){
+  ST.seg=s;
+  document.querySelectorAll('.seg-tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('seg-'+s).classList.add('active');
+  document.getElementById('futX').className='xtra'+(s==='FUT'?' show':'');
+  document.getElementById('optX').className='xtra'+(s==='OPT'?' show':'');
+  const prod=document.getElementById('fProd');
+  prod.innerHTML=s==='EQ'?
+    '<option value="MIS">MIS — Intraday</option><option value="CNC">CNC — Delivery</option>':
+    '<option value="MIS">MIS — Intraday</option><option value="NRML">NRML — CarryFwd</option>';
+  // Auto-set exchange
+  if(s==='EQ') document.getElementById('fExch').value='NSE';
+  else document.getElementById('fExch').value='NFO';
+  updateLotDisplay();
+  updateOrderSummary();
+}
+
+function setBuySell(bs){
+  ST.bs=bs;
+  document.getElementById('btnBuy').className='bs-btn buy'+(bs==='BUY'?' active':'');
+  document.getElementById('btnSell').className='bs-btn sell'+(bs==='SELL'?' active':'');
+  const pb=document.getElementById('placeBtn');
+  pb.className='place-btn '+(bs==='BUY'?'buy-btn':'sell-btn');
+  pb.textContent='PLACE '+bs+' ORDER';
+}
+
+function onOrdTypeChg(){
+  const t=document.getElementById('fOrdT').value;
+  document.getElementById('slRow').style.display=(t==='SL'||t==='SL-M')?'grid':'none';
+  document.getElementById('fPrice').disabled=(t==='MARKET'||t==='SL-M');
+  document.getElementById('fPrice').placeholder=(t==='MARKET'||t==='SL-M')?'Market':'Limit price';
+}
+
+function onSymInput(v){
+  const sym=v.toUpperCase();
+  if(ST.prices[sym]) document.getElementById('fPrice').value=ST.prices[sym].toFixed(2);
+  updateLotDisplay(); updateOrderSummary();
+}
+
+function updateLotDisplay(){
+  const sym=document.getElementById('fSym').value.trim().toUpperCase();
+  const ls=getLotSize(sym);
+  const el1=document.getElementById('fLotSz');
+  const el2=document.getElementById('oLotSz');
+  if(el1) el1.value=ls+' shares/lot';
+  if(el2) el2.value=ls+' shares/lot';
+}
+
+function updateOrderSummary(){
+  const sym=document.getElementById('fSym').value.trim().toUpperCase();
+  const qty=parseInt(document.getElementById('fQty').value)||1;
+  if(!sym){ document.getElementById('orderSummary').style.display='none'; return; }
+  const seg=ST.seg;
+  const ls=getLotSize(sym);
+  const totalShares=seg==='EQ'?qty:qty*ls;
+  const price=parseFloat(document.getElementById('fPrice').value)||ST.prices[sym]||0;
+  const value=totalShares*price;
+  document.getElementById('orderSummary').style.display='block';
+  document.getElementById('orderSummary').innerHTML=
+    `<span style="color:var(--text3)">Symbol:</span> <strong>${sym}</strong> &nbsp;|&nbsp; `+
+    `<span style="color:var(--text3)">Lot Size:</span> <strong>${ls}</strong> &nbsp;|&nbsp; `+
+    `<span style="color:var(--text3)">${seg==='EQ'?'Qty':'Lots×Shares'}:</span> <strong>${seg==='EQ'?qty:qty+'×'+ls+'='+totalShares}</strong>`+
+    (price>0?` &nbsp;|&nbsp; <span style="color:var(--text3)">~Value:</span> <strong>₹${Math.round(value).toLocaleString('en-IN')}</strong>`:'');
+}
+
+// ================================================================
+// PLACE ORDER
+// ================================================================
+function placeOrder(){
+  const symRaw=document.getElementById('fSym').value.trim().toUpperCase();
+  if(!symRaw){ showToast('Enter a symbol'); return; }
+  const qty=parseInt(document.getElementById('fQty').value)||1;
+  const prod=document.getElementById('fProd').value;
+  const ordT=document.getElementById('fOrdT').value;
+  const seg=ST.seg; const bs=ST.bs;
+  const ls=getLotSize(symRaw);
+
+  // Build full trading symbol and priceKey
+  let symbol=symRaw;   // full display/order symbol
+  let priceKey=symRaw; // key for price tracking
+  let actualQty=seg==='EQ'?qty:qty*ls; // actual shares
+  let fySymbol=null;   // exact broker-side symbol (required for live orders)
+
+  // NSE quantity freeze limits (max qty per single order) — index F&O only.
+  // Exceeding this gets an order rejected by the exchange; catch it here first
+  // with a clear message instead of a cryptic broker error.
+  const FREEZE_QTY={NIFTY:1800,BANKNIFTY:600,FINNIFTY:1200,MIDCPNIFTY:2800,NIFTYNXT50:600};
+  if((seg==='FUT'||seg==='OPT')&&FREEZE_QTY[symRaw]&&actualQty>FREEZE_QTY[symRaw]){
+    const maxLots=Math.floor(FREEZE_QTY[symRaw]/ls);
+    showToast('⚠️ Qty '+actualQty+' exceeds NSE freeze limit ('+FREEZE_QTY[symRaw]+') for '+symRaw+'. Max in one order: '+maxLots+' lots ('+(maxLots*ls)+' qty) — split into multiple orders.');
+    return;
+  }
+
+  if(seg==='EQ'){
+    fySymbol='NSE:'+symRaw+'-EQ';
+  } else if(seg==='FUT'){
+    const exp=document.getElementById('fExp').value||'03JUL2026';
+    symbol=symRaw+exp+'FUT';
+    priceKey=symbol;
+    fySymbol='NFO:'+symbol; // best-effort — verify against Fyers symbol master before relying on this for FUT live orders
+  } else if(seg==='OPT'){
+    const exp=document.getElementById('oExp').value||'03JUL2026';
+    const stk=document.getElementById('oStk').value||'0';
+    const otyp=document.getElementById('oTyp').value;
+    symbol=symRaw+exp+stk+otyp;
+    priceKey=symbol;
+    const picked=window.pickedOpt;
+    if(picked&&picked.sym===symRaw&&String(picked.strike)===String(stk)&&picked.exp===exp){
+      fySymbol=otyp==='CE'?picked.ceFySym:picked.peFySym;
+    }
+  }
+
+  // Price
+  const ltpField=parseFloat(document.getElementById('fPrice').value);
+  const ltp=(seg==='OPT'&&ltpField>0)?ltpField:(ST.prices[priceKey]||ST.prices[symRaw]||(seg==='OPT'?80:2000));
+  if(seg==='OPT'&&!ST.prices[priceKey]) ST.prices[priceKey]=ltp;
+
+  const limitP=ltpField||ltp;
+  const fillP=(ordT==='MARKET'||ordT==='SL-M')?ltp:limitP;
+  const trigP=parseFloat(document.getElementById('fTrig').value)||0;
+  const target=parseFloat(document.getElementById('fTgt').value)||null;
+  const sl=parseFloat(document.getElementById('fSL').value)||null;
+  const tsl=parseFloat(document.getElementById('fTSL').value)||null;
+
+  if((ordT==='SL'||ordT==='SL-M')&&trigP<=0){
+    showToast('⚠️ Enter a Trigger price for '+ordT+' orders');
+    return;
+  }
+
+  if(ST.mode==='live'){
+    if(seg==='OPT'&&!fySymbol){
+      showToast('⚠️ Open the Option Chain and tap the exact strike/CE/PE first — live orders need the exact Fyers symbol.');
+      return;
+    }
+    if(seg==='FUT'){
+      showToast('⚠️ Live futures orders are disabled for now — the futures trading symbol isn\'t verified against Fyers\' symbol master yet. Use Equity or Options (via the live Option Chain) for live orders.');
+      return;
+    }
+    placeLive({fySymbol,displaySymbol:symbol,priceKey,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,ordT,price:fillP,trigPrice:trigP,prod,target,sl,tsl});
+    return;
+  }
+
+  // Paper order
+  const order={id:Date.now(),symbol,sym:priceKey,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,prod,ordT,price:fillP,target,sl,tsl,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN'),status:'EXECUTED'};
+  ST.orders.push(order);
+  const ex=ST.pos.find(p=>p.symbol===symbol&&p.bs===bs&&p.prod===prod);
+  if(ex){ const tq=ex.qty+actualQty; ex.avgP=((ex.avgP*ex.qty)+(fillP*actualQty))/tq; ex.qty=tq; }
+  else ST.pos.push({id:Date.now(),symbol,sym:priceKey,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,prod,avgP:fillP,ltp:fillP,target,sl,tsl,tslHW:fillP,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
+  save(); renderAll();
+  showToast('✅ '+bs+' '+qty+(seg!=='EQ'?' lot':'')+(seg==='OPT'||seg==='FUT'?' ('+actualQty+' qty)':'')+' '+symbol+' @ ₹'+fillP.toFixed(2));
+}
+
+async function placeLive(o){
+  showToast('📡 Sending to Fyers…');
+  const type=o.ordT==='MARKET'?2:o.ordT==='LIMIT'?1:o.ordT==='SL'?4:3;
+  const limitPrice=(o.ordT==='LIMIT'||o.ordT==='SL')?o.price:0;
+  const stopPrice=(o.ordT==='SL'||o.ordT==='SL-M')?o.trigPrice:0;
+  const body={symbol:o.fySymbol,qty:o.qty,type,side:o.bs==='BUY'?1:-1,productType:o.prod==='MIS'?'INTRADAY':o.prod==='CNC'?'CNC':'MARGIN',limitPrice,stopPrice,validity:'DAY',disclosedQty:0,offlineOrder:false};
+  try{
+    const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json','Authorization':FYERS_APP_ID+':'+ST.fyToken},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.s==='error'){ showToast('❌ '+(d.message||'Order rejected')); return; }
+    showToast('✅ Live order placed: '+(d.id||'')+' — syncing fill…');
+    // Track it locally right away (using the order price as an estimate) so TGT/SL/TSL
+    // start monitoring immediately; the live quote feed will correct the LTP within seconds,
+    // and syncFyersPositions() will reconcile the real avg fill price shortly after.
+    ST.orders.push({id:Date.now(),symbol:o.displaySymbol,sym:o.fySymbol,symRaw:o.symRaw,seg:o.seg,bs:o.bs,qty:o.qty,lots:o.lots,lotSize:o.lotSize,prod:o.prod,ordT:o.ordT,price:o.price,target:o.target,sl:o.sl,tsl:o.tsl,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN'),status:'SENT',fyOrderId:d.id});
+    const ex=ST.pos.find(p=>p.fySymbol===o.fySymbol&&p.bs===o.bs&&p.prod===o.prod&&p.live);
+    if(ex){ const tq=ex.qty+o.qty; ex.avgP=((ex.avgP*ex.qty)+(o.price*o.qty))/tq; ex.qty=tq; }
+    else ST.pos.push({id:Date.now(),symbol:o.displaySymbol,sym:o.fySymbol,fySymbol:o.fySymbol,symRaw:o.symRaw,seg:o.seg,bs:o.bs,qty:o.qty,lots:o.lots,lotSize:o.lotSize,prod:o.prod,avgP:o.price,ltp:o.price,target:o.target,sl:o.sl,tsl:o.tsl,tslHW:o.price,live:true,fyOrderId:d.id,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
+    ST.prices[o.fySymbol]=o.price;
+    save(); renderAll();
+    syncFyersPositions();
+  }catch(e){ showToast('❌ '+e.message); }
+}
+
+// ================================================================
+// EDIT POSITION — Target / SL / TSL
+// ================================================================
+function openEdit(id){
+  editId=id;
+  const p=ST.pos.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('editName').textContent=p.symbol+' · '+p.bs+' · '+p.qty+' qty ('+p.lots+' lot) · avg ₹'+p.avgP.toFixed(2);
+  document.getElementById('eTgt').value=p.target||'';
+  document.getElementById('eSL').value=p.sl||'';
+  document.getElementById('eTSL').value=p.tsl||'';
+  document.getElementById('editCloseBtn').onclick=()=>{ closeModal('editModal'); closePos(id); };
+  updEditVals(p);
+  openModal('editModal');
+}
+
+function updEditVals(p){
+  const ltp=ST.prices[p.sym]||p.ltp;
+  const m=p.bs==='BUY'?1:-1;
+  const pnl=m*(ltp-p.avgP)*p.qty;
+  document.getElementById('editVals').innerHTML=
+    '<strong style="color:var(--text)">Current:</strong><br>'+
+    '🎯 Target: '+(p.target?'₹'+p.target:'Not set')+'<br>'+
+    '🛑 Stoploss: '+(p.sl?'₹'+p.sl:'Not set')+'<br>'+
+    '📉 Trailing SL: '+(p.tsl?p.tsl+' pts':'Off')+'<br>'+
+    '💰 LTP: ₹'+ltp.toFixed(2)+'  P&L: <span style="color:'+(pnl>=0?'var(--green)':'var(--red)')+'">'+( pnl>=0?'+':'-')+fmt(pnl)+'</span>';
+}
+
+function saveEdit(field,action){
+  const p=ST.pos.find(x=>x.id===editId);
+  if(!p) return;
+  const idMap={target:'eTgt',sl:'eSL',tsl:'eTSL'};
+  if(action==='rm'){ p[field]=null; if(field==='tsl') p.tslHW=null; }
+  else{
+    const val=parseFloat(document.getElementById(idMap[field]).value);
+    if(isNaN(val)||val<0){ showToast('Enter valid value'); return; }
+    p[field]=val; if(field==='tsl') p.tslHW=ST.prices[p.sym]||p.ltp;
+  }
+  save(); updEditVals(p); renderPositions();
+  const labels={target:'🎯 Target',sl:'🛑 Stoploss',tsl:'📉 TSL'};
+  showToast((labels[field]||field)+' '+(action==='rm'?'removed':'saved'));
+}
+
+// ================================================================
+// CLOSE POSITION
+// ================================================================
+function closePos(id){
+  const p=ST.pos.find(x=>x.id===id);
+  if(!p||p.closing) return;
+  if(p.live){ p.closing=true; save(); renderAll(); closeLivePos(p); return; }
+  const exitP=ST.prices[p.sym]||p.ltp;
+  const pnl=(p.bs==='BUY'?1:-1)*(exitP-p.avgP)*p.qty;
+  ST.hist.unshift({id:Date.now(),symbol:p.symbol,sym:p.sym,seg:p.seg,bs:p.bs,qty:p.qty,lots:p.lots,lotSize:p.lotSize,prod:p.prod,entryP:p.avgP,exitP,pnl,live:false,date:new Date().toLocaleDateString('en-IN'),time:new Date().toISOString()});
+  const cut=new Date(); cut.setDate(cut.getDate()-30);
+  ST.hist=ST.hist.filter(h=>new Date(h.time)>=cut);
+  ST.pos=ST.pos.filter(x=>x.id!==id);
+  save(); renderAll();
+  showToast((pnl>=0?'🟢 +':'🔴 -')+fmt(pnl)+' — '+p.symbol+' closed');
+}
+
+// Sends a real opposite-side MARKET order to Fyers to flatten a live position,
+// then removes it locally once the broker confirms the exit.
+async function closeLivePos(p){
+  showToast('📡 Exiting '+p.symbol+' on Fyers…');
+  const body={symbol:p.fySymbol,qty:p.qty,type:2,side:p.bs==='BUY'?-1:1,productType:p.prod==='MIS'?'INTRADAY':p.prod==='CNC'?'CNC':'MARGIN',limitPrice:0,stopPrice:0,validity:'DAY',disclosedQty:0,offlineOrder:false};
+  try{
+    const r=await fetch('/api/orders',{method:'POST',headers:{'Content-Type':'application/json','Authorization':FYERS_APP_ID+':'+ST.fyToken},body:JSON.stringify(body)});
+    const d=await r.json();
+    if(d.s==='error'){
+      showToast('❌ Exit failed: '+(d.message||'unknown error')+' — position kept open, retry Close');
+      p.closing=false; save(); renderAll();
+      return;
+    }
+    const exitP=ST.prices[p.sym]||p.ltp;
+    const pnl=(p.bs==='BUY'?1:-1)*(exitP-p.avgP)*p.qty;
+    ST.hist.unshift({id:Date.now(),symbol:p.symbol,sym:p.sym,seg:p.seg,bs:p.bs,qty:p.qty,lots:p.lots,lotSize:p.lotSize,prod:p.prod,entryP:p.avgP,exitP,pnl,live:true,date:new Date().toLocaleDateString('en-IN'),time:new Date().toISOString()});
+    const cut=new Date(); cut.setDate(cut.getDate()-30);
+    ST.hist=ST.hist.filter(h=>new Date(h.time)>=cut);
+    ST.pos=ST.pos.filter(x=>x.id!==p.id);
+    save(); renderAll();
+    showToast((pnl>=0?'🟢 +':'🔴 -')+fmt(pnl)+' — '+p.symbol+' closed (Fyers '+(d.id||'')+')');
+  }catch(e){
+    showToast('❌ Exit error: '+e.message+' — position kept open, retry Close');
+    p.closing=false; save(); renderAll();
+  }
+}
+
+// ================================================================
+// TSL / SL / Target auto-check (every price tick)
+// ================================================================
+function checkSLTgt(){
+  [...ST.pos].forEach(p=>{
+    if(p.closing) return;
+    const ltp=ST.prices[p.sym]||p.ltp;
+    const m=p.bs==='BUY'?1:-1;
+    // Trailing SL
+    if(p.tsl&&p.tsl>0){
+      if(!p.tslHW) p.tslHW=ltp;
+      if((m===1&&ltp>p.tslHW)||(m===-1&&ltp<p.tslHW)){
+        p.tslHW=ltp;
+        const newSL=m===1?(ltp-p.tsl):(ltp+p.tsl);
+        if(!p.sl||(m===1&&newSL>p.sl)||(m===-1&&newSL<p.sl)){
+          p.sl=parseFloat(newSL.toFixed(2)); save();
+        }
+      }
+    }
+    if(p.sl&&((p.bs==='BUY'&&ltp<=p.sl)||(p.bs==='SELL'&&ltp>=p.sl))){
+      showToast('🛑 SL hit: '+p.symbol+' @₹'+ltp.toFixed(2)); closePos(p.id); return;
+    }
+    if(p.target&&((p.bs==='BUY'&&ltp>=p.target)||(p.bs==='SELL'&&ltp<=p.target))){
+      showToast('🎯 Target: '+p.symbol+' @₹'+ltp.toFixed(2)); closePos(p.id); return;
+    }
+  });
+}
+
+// ================================================================
+// TABS
+// ================================================================
+function switchTab(tab,btn){
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nb').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+tab).classList.add('active');
+  if(btn) btn.classList.add('active'); else document.getElementById('nav-'+tab).classList.add('active');
+  if(tab==='hist') renderHistory();
+  if(tab==='port') renderPortfolio();
+}
+
+function setMode(m){
+  if(m==='live'&&!ST.fyToken){ showToast('⚠️ Login Fyers first'); showLogin(); return; }
+  if(m==='live'&&!confirm('Switch to LIVE? Real Fyers orders!')) return;
+  ST.mode=m; save();
+  document.getElementById('btnPaper').className='mode-btn'+(m==='paper'?' ap':'');
+  document.getElementById('btnLive').className='mode-btn'+(m==='live'?' al':'');
+  document.getElementById('liveBanner').className='lb'+(m==='live'?' show':'');
+  showToast(m==='paper'?'📋 Paper mode (orders simulated — prices still live)':'⚡ Live mode — real orders will be sent to Fyers');
+  renderAll();
+  if(m==='live') syncFyersAccount(); // pull real capital/positions/orders immediately, don't wait for next poll
+  // Note: market-data feed is tied to Fyers connection, not this toggle — see startLiveFeed()/stopLiveFeed()
+}
+
+// ================================================================
+// WATCHLIST
+// ================================================================
+function addWl(){
+  const sym=document.getElementById('wlSym').value.trim().toUpperCase();
+  const seg=document.getElementById('wlSeg').value;
+  if(!sym){ showToast('Enter symbol'); return; }
+  if(ST.wl.find(w=>w.sym===sym&&w.seg===seg)){ showToast('Already added'); return; }
+  ST.wl.push({sym,seg,ltp:ST.prices[sym]||1000,chg:0});
+  save(); closeModal('wlModal'); renderWatchlist(); showToast('Added '+sym);
+}
+function rmWl(sym,seg){ ST.wl=ST.wl.filter(w=>!(w.sym===sym&&w.seg===seg)); save(); renderWatchlist(); }
+
+// ================================================================
+// FILTER
+// ================================================================
+function setFilt(f,el){
+  ST.histFilter=f;
+  document.querySelectorAll('.fchip').forEach(c=>c.classList.remove('active'));
+  el.classList.add('active');
+  renderHistory();
+}
+function updCap(v){ ST.capital=parseFloat(v)||200000; save(); renderPortfolio(); }
+function saveFyersTok(v){ ST.fyToken=v; save(); updLoginBtn(); if(v) startLiveFeed(); }
+function clearData(){ if(!confirm('Clear ALL paper data?')) return; ST.pos=[]; ST.hist=[]; ST.orders=[]; save(); renderAll(); showToast('Data cleared'); }
+function renderAll(){ renderWatchlist(); renderPositions(); renderOrders(); renderStats(); renderPortfolio(); updMetrics(); }
+function renderWatchlist(){
+  const d=document.getElementById('wlDiv');
+  if(!ST.wl.length){ d.innerHTML='<div class="empty"><div class="empty-i">👁️</div><div class="empty-t">Empty — tap + Add</div></div>'; return; }
+  d.innerHTML=ST.wl.map(w=>`<div class="wl-row" onclick="prefillOrder('${w.sym}','${w.seg}')"><div style="flex:1"><div class="wl-nm">${w.sym}<span class="badge b-${w.seg.toLowerCase()}">${w.seg}</span></div><div class="wl-sg">${w.seg==='EQ'?'NSE':'NFO'} <span onclick="event.stopPropagation();rmWl('${w.sym}','${w.seg}')" style="cursor:pointer;color:var(--text3);margin-left:5px">✕</span></div></div><div><div class="wl-pr">₹${(w.ltp||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</div><div class="wl-ch ${(w.chg||0)>=0?'up':'dn'}">${(w.chg||0)>=0?'+':''}${(w.chg||0).toFixed(2)}%</div></div></div>`).join('');
+}
+function renderPositions(){
+  const d=document.getElementById('posDiv');
+  const pos=ST.pos.filter(p=>ST.mode==='live'?p.live:!p.live);
+  document.getElementById('openPosCount').textContent=pos.length;
+  if(!pos.length){ d.innerHTML='<div class="empty"><div class="empty-i">📭</div><div class="empty-t">No open positions</div></div>'; return; }
+  d.innerHTML=pos.map(p=>{
+    const ltp=ST.prices[p.sym]||p.ltp;
+    const m=p.bs==='BUY'?1:-1;
+    const pnl=m*(ltp-p.avgP)*p.qty;
+    const pct=(pnl/(p.avgP*p.qty)*100).toFixed(2);
+    const lots=p.lots||p.qty;
+    return `<div class="pos-row"><div class="pos-top"><div style="flex:1"><div class="pos-nm">${p.symbol}<span class="badge b-${p.seg.toLowerCase()}">${p.seg}</span><span class="badge ${p.prod==='MIS'?'b-mis':'b-nrml'}">${p.prod}</span>${p.live?'<span class="badge" style="background:var(--red-bg);color:var(--red)">LIVE</span>':''}</div><div style="font-size:9px;color:var(--text3);margin-top:2px">${p.bs} · ${lots} lot · ${p.qty} qty · avg ₹${p.avgP.toFixed(2)}</div></div><div class="pos-pnl"><div class="pos-pv ${pnl>=0?'up':'dn'}">${pnl>=0?'+':'-'}${fmt(pnl)}</div><div class="pos-pp ${pnl>=0?'up':'dn'}">${pct}%</div></div></div><div class="pos-meta"><div class="pmi"><span class="pml">LTP</span>₹${ltp.toFixed(2)}</div>${p.target?`<div class="pmi"><span class="pml" style="color:var(--green)">TGT</span>₹${p.target}</div>`:''} ${p.sl?`<div class="pmi"><span class="pml" style="color:var(--red)">SL</span>₹${p.sl}</div>`:''} ${p.tsl?`<div class="pmi"><span class="pml" style="color:var(--amber)">TSL</span>${p.tsl}pts</div>`:''}</div><div class="pos-acts"><button class="pb edit-btn" onclick="openEdit(${p.id})" ${p.closing?'disabled':''}>✏️ Edit TGT/SL/TSL</button><button class="pb close-btn" onclick="closePos(${p.id})" ${p.closing?'disabled':''}>${p.closing?'⏳ Closing…':'🔴 Close'}</button></div></div>`;
+  }).join('');
+}
+function updMetrics(){
+  const isLive=ST.mode==='live';
+  const pos=ST.pos.filter(p=>isLive?p.live:!p.live);
+  const hist=ST.hist.filter(h=>isLive?h.live:!h.live);
+  let todP=0,allP=0;
+  const today=new Date().toLocaleDateString('en-IN');
+  hist.forEach(h=>{ allP+=h.pnl; if(h.date===today) todP+=h.pnl; });
+  pos.forEach(p=>{ const ltp=ST.prices[p.sym]||p.ltp; const m=p.bs==='BUY'?1:-1; const pnl=m*(ltp-p.avgP)*p.qty; todP+=pnl; allP+=pnl; });
+  const te=document.getElementById('todayPnl'); te.textContent=(todP>=0?'+':'-')+fmt(todP); te.style.color=todP>=0?'var(--green)':'var(--red)';
+  const ae=document.getElementById('overallPnl'); ae.textContent=(allP>=0?'+':'-')+fmt(allP); ae.style.color=allP>=0?'var(--green)':'var(--red)';
+  const capEl=document.getElementById('capitalVal');
+  if(isLive){
+    capEl.textContent=ST.liveFunds!=null?'₹'+ST.liveFunds.toLocaleString('en-IN',{maximumFractionDigits:0}):'Loading…';
+  }else{
+    capEl.textContent='₹'+ST.capital.toLocaleString('en-IN');
+  }
+}
+function renderOrders(){
+  const d=document.getElementById('ordDiv');
+  if(ST.mode==='live'){
+    const lo=ST.liveOrderBook||[];
+    if(!lo.length){ d.innerHTML='<div class="empty"><div class="empty-i">📋</div><div class="empty-t">No live orders today (or still loading…)</div></div>'; return; }
+    d.innerHTML=lo.slice().reverse().map(o=>{
+      const sym=(o.symbol||'').split(':').pop();
+      const side=o.side===1?'BUY':'SELL';
+      const px=o.tradedPrice||o.limitPrice||o.stopPrice||0;
+      const ts=o.orderDateTime||o.exchangeOrderDate||'';
+      return `<div class="hr"><div style="flex:1;min-width:0"><div class="hn" style="word-break:break-all">${sym}<span class="badge b-${(o.type===2?'eq':'opt')}">${side}</span></div><div class="hm">${o.productType||''} · qty ${o.qty||0} · ${o.status===2?'FILLED':o.status===1?'CANCELLED':o.status===5?'REJECTED':'PENDING'}</div></div><div style="text-align:right;flex-shrink:0"><div style="font-size:12px;font-weight:600">₹${(px||0).toFixed?px.toFixed(2):px}</div><div class="hd">${ts}</div></div></div>`;
+    }).join('');
+    return;
+  }
+  const today=new Date().toLocaleDateString('en-IN');
+  const todays=ST.orders.filter(o=>o.date===today);
+  if(!todays.length){ d.innerHTML='<div class="empty"><div class="empty-i">📋</div><div class="empty-t">No orders today</div></div>'; return; }
+  d.innerHTML=todays.slice().reverse().map(o=>`<div class="hr"><div style="flex:1;min-width:0"><div class="hn" style="word-break:break-all">${o.symbol}<span class="badge b-${o.seg.toLowerCase()}">${o.bs}</span></div><div class="hm">${o.prod} · ${o.ordT} · ${o.lots||o.qty} lot · ${o.qty} qty · ${o.status}</div></div><div style="text-align:right;flex-shrink:0"><div style="font-size:12px;font-weight:600">₹${o.price.toFixed(2)}</div><div class="hd">${new Date(o.time).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'})}</div></div></div>`).join('');
+}
+function renderHistory(){
+  const d=document.getElementById('histDiv');
+  const f=ST.histFilter;
+  const isLive=ST.mode==='live';
+  let trades=ST.hist.filter(h=>(isLive?h.live:!h.live)).filter(h=>{ if(f==='ALL') return true; if(f==='WIN') return h.pnl>0; if(f==='LOSS') return h.pnl<0; return h.seg===f||h.prod===f; });
+  if(!trades.length){ d.innerHTML='<div class="empty"><div class="empty-i">📅</div><div class="empty-t">No trades</div></div>'; renderStats(trades); return; }
+  d.innerHTML=trades.map(h=>`<div class="hr"><div style="flex:1;min-width:0"><div class="hn" style="word-break:break-all">${h.symbol}<span class="badge b-${h.seg.toLowerCase()}">${h.bs}</span></div><div class="hm">${h.prod} · ${h.lots||h.qty} lot · ₹${h.entryP.toFixed(2)} → ₹${h.exitP.toFixed(2)}</div></div><div style="text-align:right;flex-shrink:0"><div class="hp ${h.pnl>=0?'up':'dn'}">${h.pnl>=0?'+':'-'}${fmt(h.pnl)}</div><div class="hd">${h.date}</div></div></div>`).join('');
+  renderStats(trades);
+}
+function renderStats(trades){
+  trades=trades||ST.hist.filter(h=>ST.mode==='live'?h.live:!h.live);
+  const tot=trades.length,wins=trades.filter(h=>h.pnl>0).length,totP=trades.reduce((s,h)=>s+h.pnl,0);
+  document.getElementById('sTotal').textContent=tot;
+  document.getElementById('sWin').textContent=tot?Math.round(wins/tot*100)+'%':'0%';
+  const el=document.getElementById('sPnl'); el.textContent=(totP>=0?'+':'-')+fmt(totP); el.style.color=totP>=0?'var(--green)':'var(--red)';
+  document.getElementById('sAvg').textContent=tot?(totP>=0?'+':'-')+fmt(totP/tot):'₹0';
+}
+function renderPortfolio(){
+  const isLive=ST.mode==='live';
+  const h=ST.pos.filter(p=>(isLive?p.live:!p.live)&&p.prod==='CNC');
+  const d=document.getElementById('holdDiv');
+  if(!h.length) d.innerHTML='<div class="empty"><div class="empty-i">📦</div><div class="empty-t">No CNC holdings</div></div>';
+  else d.innerHTML=h.map(p=>{ const ltp=ST.prices[p.sym]||p.ltp; const pnl=(ltp-p.avgP)*p.qty*(p.bs==='BUY'?1:-1); return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">${p.symbol}</div><div style="font-size:9px;color:var(--text3)">${p.qty} qty · avg ₹${p.avgP.toFixed(2)}</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:600">₹${(ltp*p.qty).toLocaleString('en-IN',{maximumFractionDigits:0})}</div><div style="font-size:11px;color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':'-'}${fmt(pnl)}</div></div></div>`; }).join('');
+  const used=h.reduce((s,p)=>s+p.avgP*p.qty,0);
+  const real=ST.hist.filter(hh=>isLive?hh.live:!hh.live).reduce((s,hh)=>s+hh.pnl,0);
+  const capBase=isLive?(ST.liveFunds||0):ST.capital;
+  document.getElementById('capInit').textContent=isLive?(ST.liveFunds!=null?'₹'+ST.liveFunds.toLocaleString('en-IN',{maximumFractionDigits:0}):'Loading…'):'₹'+ST.capital.toLocaleString('en-IN');
+  document.getElementById('capUsed').textContent='₹'+used.toLocaleString('en-IN',{maximumFractionDigits:0});
+  const rel=document.getElementById('capReal'); rel.textContent=(real>=0?'+':'-')+fmt(real); rel.style.color=real>=0?'var(--green)':'var(--red)';
+  const net=capBase+real-used;
+  document.getElementById('capNet').textContent='₹'+net.toLocaleString('en-IN',{maximumFractionDigits:0});
+}
+function simPrices(){
+  const base={RELIANCE:2845,TCS:3920,INFY:1560,HDFCBANK:1672,ICICIBANK:1230,SBIN:820,BAJFINANCE:6800,WIPRO:490,NIFTY:24416,BANKNIFTY:52012,TATAMOTORS:780,FINNIFTY:23870,ADANIENT:2340,MIDCPNIFTY:12200};
+  Object.keys(base).forEach(s=>{ if(!ST.prices[s]) ST.prices[s]=base[s]; });
+  setInterval(()=>{
+    if(ST.mode==='live'||ST.fyToken) return; // live quote feed drives prices instead of the simulator whenever connected
+    Object.keys(base).forEach(s=>{ const c=(Math.random()-.498)*ST.prices[s]*.0008; ST.prices[s]=parseFloat((ST.prices[s]+c).toFixed(2)); });
+    ST.pos.forEach(p=>{ if(p.seg==='OPT'){ if(ST.prices[p.sym]===undefined) ST.prices[p.sym]=p.ltp; const c=(Math.random()-.48)*ST.prices[p.sym]*.006; ST.prices[p.sym]=Math.max(.05,parseFloat((ST.prices[p.sym]+c).toFixed(2))); } });
+    ST.wl.forEach(w=>{ if(ST.prices[w.sym]){ const old=w.ltp||ST.prices[w.sym]; w.ltp=ST.prices[w.sym]; w.chg=parseFloat(((w.ltp/old-1)*100).toFixed(2)); } });
+    ST.pos.forEach(p=>{ if(ST.prices[p.sym]) p.ltp=ST.prices[p.sym]; });
+    document.getElementById('mN').textContent=(ST.prices.NIFTY||24416).toLocaleString('en-IN');
+    document.getElementById('mB').textContent=(ST.prices.BANKNIFTY||52012).toLocaleString('en-IN');
+    document.getElementById('mS').textContent=Math.round((ST.prices.NIFTY||24416)*3.3).toLocaleString('en-IN');
+    document.getElementById('mF').textContent=(ST.prices.FINNIFTY||23870).toLocaleString('en-IN');
+    renderWatchlist(); renderPositions(); updMetrics(); checkSLTgt();
+  },1500);
+}
+
+// ================================================================
+// LIVE QUOTE FEED — polls Fyers quotes for indices + every open live
+// position + watchlist symbol, and syncs real broker positions.
+// ================================================================
+function startLiveFeed(){
+  stopLiveFeed();
+  pollLiveQuotes();
+  liveFeedTmr=setInterval(pollLiveQuotes,3000);
+  syncFyersAccount();
+  livePosSyncTmr=setInterval(syncFyersAccount,10000);
+}
+function stopLiveFeed(){
+  if(liveFeedTmr){ clearInterval(liveFeedTmr); liveFeedTmr=null; }
+  if(livePosSyncTmr){ clearInterval(livePosSyncTmr); livePosSyncTmr=null; }
+}
+function syncFyersAccount(){
+  // Real account state (positions/funds/orders) only syncs in Live mode.
+  // Paper mode stays pure virtual practice, even while connected to Fyers —
+  // market data (quotes/option chain) keeps flowing regardless of mode.
+  if(ST.mode!=='live') return;
+  syncFyersPositions();
+  fetchFyersFunds();
+  fetchFyersOrderbook();
+}
+async function pollLiveQuotes(){
+  if(!ST.fyToken) return;
+  const idxSymbols=['NSE:NIFTY50-INDEX','NSE:NIFTYBANK-INDEX','NSE:FINNIFTY-INDEX','BSE:SENSEX-INDEX'];
+  const posSymbols=ST.pos.map(p=>p.fySymbol).filter(Boolean);
+  const wlSymbols=ST.wl.map(w=>w.seg==='EQ'?('NSE:'+w.sym+'-EQ'):null).filter(Boolean);
+  const all=[...new Set([...idxSymbols,...posSymbols,...wlSymbols])].slice(0,50);
+  if(!all.length) return;
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    const r=await fetch('/api/quotes?symbols='+encodeURIComponent(all.join(',')),{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error') throw new Error(d.message||'quote error');
+    (d.d||[]).forEach(q=>{
+      const v=q.v||{};
+      const lp=v.lp??v.ltp??v.last_price;
+      if(lp==null) return;
+      if(q.n==='NSE:NIFTY50-INDEX') ST.prices.NIFTY=lp;
+      else if(q.n==='NSE:NIFTYBANK-INDEX') ST.prices.BANKNIFTY=lp;
+      else if(q.n==='NSE:FINNIFTY-INDEX') ST.prices.FINNIFTY=lp;
+      else if(q.n==='BSE:SENSEX-INDEX') ST.prices.SENSEX=lp;
+      else ST.prices[q.n]=lp; // live positions/watchlist use their fySymbol as the price key
+    });
+    document.getElementById('mN').textContent=(ST.prices.NIFTY||24416).toLocaleString('en-IN');
+    document.getElementById('mB').textContent=(ST.prices.BANKNIFTY||52012).toLocaleString('en-IN');
+    document.getElementById('mS').textContent=(ST.prices.SENSEX||Math.round((ST.prices.NIFTY||24416)*3.3)).toLocaleString('en-IN');
+    document.getElementById('mF').textContent=(ST.prices.FINNIFTY||23870).toLocaleString('en-IN');
+    ST.wl.forEach(w=>{ const k='NSE:'+w.sym+'-EQ'; if(ST.prices[k]!==undefined){ const old=w.ltp||ST.prices[k]; w.ltp=ST.prices[k]; w.chg=parseFloat(((w.ltp/old-1)*100).toFixed(2)); } });
+    ST.pos.forEach(p=>{ if(p.fySymbol&&ST.prices[p.fySymbol]!==undefined) p.ltp=ST.prices[p.fySymbol]; });
+    save(); renderWatchlist(); renderPositions(); updMetrics(); checkSLTgt();
+    const fs=document.getElementById('feedSt'); fs.style.display='none';
+  }catch(e){
+    console.warn('Live quote poll failed:',e.message);
+    const fs=document.getElementById('feedSt');
+    fs.style.display='block'; fs.textContent='⚠️ Live feed error: '+e.message;
+  }
+}
+// Reconciles locally-tracked live positions with what Fyers actually shows —
+// picks up real average fill price/qty and any positions opened outside this app.
+async function syncFyersPositions(){
+  if(ST.mode!=='live'||!ST.fyToken) return;
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    const r=await fetch('/api/positions',{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error') throw new Error(d.message||'positions error');
+    const net=d.netPositions||d.net_positions||[];
+    net.forEach(np=>{
+      const qty=np.netQty??np.qty??0;
+      if(!qty) return;
+      const fySym=np.symbol;
+      const bs=qty>0?'BUY':'SELL';
+      const avgP=np.avgPrice??np.netAvg??np.buyAvg??0;
+      const ltp=np.ltp||avgP;
+      const prod=np.productType==='INTRADAY'?'MIS':np.productType==='CNC'?'CNC':'NRML';
+      let ex=ST.pos.find(p=>p.fySymbol===fySym&&p.live);
+      if(ex){ ex.qty=Math.abs(qty); ex.avgP=avgP||ex.avgP; ex.bs=bs; ex.prod=prod; }
+      else{
+        ST.pos.push({id:Date.now()+Math.random(),symbol:fySym.split(':').pop(),sym:fySym,fySymbol:fySym,symRaw:fySym.split(':').pop(),seg:fySym.includes('CE')||fySym.includes('PE')?'OPT':fySym.endsWith('-EQ')?'EQ':'FUT',bs,qty:Math.abs(qty),lots:1,lotSize:1,prod,avgP,ltp,target:null,sl:null,tsl:null,tslHW:ltp,live:true,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
+      }
+    });
+    // Drop local live positions Fyers no longer shows as open (closed elsewhere, e.g. via broker app/SL hit on exchange)
+    const openFySyms=new Set(net.filter(np=>(np.netQty??np.qty??0)!==0).map(np=>np.symbol));
+    ST.pos=ST.pos.filter(p=>!p.live||p.closing||openFySyms.has(p.fySymbol));
+    save(); renderAll();
+  }catch(e){
+    console.warn('Position sync failed:',e.message);
+  }
+}
+// Real account balance — shown as Capital in Live mode instead of the virtual
+// paper-trading capital. Response shape confirmed via Fyers' official SDK:
+// { s, fund_limit: [{ id, title, equityAmount, commodityAmount }, ...] }
+async function fetchFyersFunds(){
+  if(ST.mode!=='live'||!ST.fyToken) return;
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    const r=await fetch('/api/funds',{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error') throw new Error(d.message||'funds error');
+    const list=d.fund_limit||[];
+    const avail=list.find(f=>/available/i.test(f.title||''));
+    ST.liveFunds=avail?avail.equityAmount:(list[0]?list[0].equityAmount:0);
+    ST.liveFundsList=list;
+    updMetrics(); renderPortfolio();
+  }catch(e){
+    console.warn('Funds fetch failed:',e.message);
+  }
+}
+// Real order book — shown in the Orders tab in Live mode instead of only
+// orders placed through this app (so orders from the broker's own app/site
+// show up too).
+async function fetchFyersOrderbook(){
+  if(ST.mode!=='live'||!ST.fyToken) return;
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    const r=await fetch('/api/orderbook',{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error') throw new Error(d.message||'orderbook error');
+    ST.liveOrderBook=d.orderBook||d.orders||[];
+    renderOrders();
+  }catch(e){
+    console.warn('Orderbook fetch failed:',e.message);
+  }
+}
+function drawChart(){
+  const c=document.getElementById('pnlChart'); if(!c) return;
+  const ctx=c.getContext('2d'); c.width=c.offsetWidth*2; c.height=120;
+  let chartD=Array.from({length:30},(_,i)=>({y:Math.sin(i*.4)*500+Math.random()*200}));
+  rC(ctx,c.width,c.height,chartD);
+  setInterval(()=>{ let l=chartD[chartD.length-1].y; chartD.push({y:l+(Math.random()-.45)*150}); if(chartD.length>60) chartD.shift(); rC(ctx,c.width,c.height,chartD); },3000);
+}
+function rC(ctx,w,h,data){
+  ctx.clearRect(0,0,w,h); if(!data.length) return;
+  const mn=Math.min(...data.map(d=>d.y)),mx=Math.max(...data.map(d=>d.y)),rng=mx-mn||1,pad=10;
+  const pts=data.map((d,i)=>({x:pad+(i/(data.length-1))*(w-pad*2),y:h-pad-((d.y-mn)/rng)*(h-pad*2)}));
+  const last=data[data.length-1].y,col=last>=0?'#22c55e':'#ef4444';
+  ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
+  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.stroke();
+  ctx.lineTo(pts[pts.length-1].x,h); ctx.lineTo(pts[0].x,h); ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,last>=0?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fill();
+}
+function fmt(n){ return '₹'+Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:0}); }
+function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
+function openModal(id){ document.getElementById(id).classList.add('show'); }
+function closeModal(id){ document.getElementById(id).classList.remove('show'); }
+function prefillOrder(sym,seg){
+  setSeg(seg); switchTab('order',document.getElementById('nav-order'));
+  document.getElementById('fSym').value=sym;
+  if(ST.prices[sym]) document.getElementById('fPrice').value=ST.prices[sym].toFixed(2);
+  updateLotDisplay(); updateOrderSummary();
+}
+if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(()=>{}); }
+</script>
+</body>
+</html>
