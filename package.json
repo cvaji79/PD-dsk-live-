@@ -1,0 +1,14 @@
+{
+  "name": "tradebook-fyers-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local proxy so TradeBook's browser UI can reach Fyers' Data/Order APIs without hitting CORS blocks.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
