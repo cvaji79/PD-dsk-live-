@@ -317,7 +317,7 @@ canvas.mc{width:100%;height:58px}
           <tbody id="cocBody"><tr><td colspan="8" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr></tbody>
         </table>
       </div>
-      <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">MAP = last CE/PE meeting price (3m candle) · MPH/MPL = that candle's merged high/low · SNI = one-strike-OTM CE+PE prev-day-close average · Green CE = LTP&gt;SNI · Red PE = LTP&lt;SNI</div>
+      <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">MAP = last CE/PE meeting price (3m candle) · MPH/MPL = that candle's merged high/low · SNI = one-strike-OTM CE+PE prev-day-close average, fixed for the day · Green = LTP&gt;SNI · Red = LTP&lt;SNI (both CE &amp; PE)</div>
     </div>
   </div>
 
@@ -1099,6 +1099,7 @@ function populateExpiries(){
 const COC_STEP={NIFTY:50,BANKNIFTY:100,FINNIFTY:50,MIDCPNIFTY:25,SENSEX:100,BANKEX:100};
 const COC_IDX={NIFTY:'NSE:NIFTY50-INDEX',BANKNIFTY:'NSE:NIFTYBANK-INDEX',FINNIFTY:'NSE:FINNIFTY-INDEX',MIDCPNIFTY:'NSE:MIDCPNIFTY-INDEX',SENSEX:'BSE:SENSEX-INDEX',BANKEX:'BSE:BANKEX-INDEX'};
 let cocScanning=false, cocData=[];
+let cocSniCache={}; // "symbol" -> {date:'YYYY-MM-DD', pdc:number} — PDC is fixed for the whole day, no need to refetch every scan
 
 function populateCocExpiries(){
   const sym=document.getElementById('cocSym').value;
@@ -1107,6 +1108,19 @@ function populateCocExpiries(){
   const opts=getExpiryOptions(sym);
   sel.innerHTML=opts.map(o=>`<option value="${o.str}">${o.str} — ${o.label}</option>`).join('');
   if(opts.some(o=>o.str===prev)) sel.value=prev;
+}
+
+// PDC (previous day close) for a given option contract doesn't change during
+// the trading day, so we cache it after the first fetch — re-running Scan
+// later the same day reuses it instead of hitting Fyers again for every strike.
+async function getCachedPdc(symbol,fromDate,toDate){
+  const todayStr=ymd(toDate);
+  const hit=cocSniCache[symbol];
+  if(hit && hit.date===todayStr) return hit.pdc;
+  const d=await fetchHistory(symbol,'D',ymd(fromDate),todayStr);
+  const pdc=d.length?(d[d.length-2]||d[d.length-1]).c:null;
+  if(pdc!=null) cocSniCache[symbol]={date:todayStr,pdc};
+  return pdc;
 }
 
 async function runCocScan(){
@@ -1187,12 +1201,8 @@ async function runCocScan(){
           }
         }
         if(ceOtm?.symbol && peOtm?.symbol){
-          const [ceD,peD]=await Promise.all([
-            fetchHistory(ceOtm.symbol,'D',ymd(pdcFrom),ymd(today)),
-            fetchHistory(peOtm.symbol,'D',ymd(pdcFrom),ymd(today))
-          ]);
-          const cePdc=ceD.length?(ceD[ceD.length-2]||ceD[ceD.length-1]).c:null;
-          const pePdc=peD.length?(peD[peD.length-2]||peD[peD.length-1]).c:null;
+          const cePdc=await getCachedPdc(ceOtm.symbol,pdcFrom,today);
+          const pePdc=await getCachedPdc(peOtm.symbol,pdcFrom,today);
           if(cePdc!=null && pePdc!=null) row.sni=(cePdc+pePdc)/2;
         }
       }catch(e){ console.warn('COC row failed for',s,e.message); }
@@ -1215,16 +1225,21 @@ function renderCocTable(){
   const body=document.getElementById('cocBody');
   if(!cocData.length){ body.innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr>'; return; }
   body.innerHTML=cocData.map(r=>{
-    const ceGreen = r.sni!=null && r.ceLtp!=null && r.ceLtp>r.sni;
-    const peRed   = r.sni!=null && r.peLtp!=null && r.peLtp<r.sni;
+    const hasSni = r.sni!=null;
+    const ceUp = hasSni && r.ceLtp!=null && r.ceLtp>r.sni;
+    const ceDn = hasSni && r.ceLtp!=null && r.ceLtp<r.sni;
+    const peUp = hasSni && r.peLtp!=null && r.peLtp>r.sni;
+    const peDn = hasSni && r.peLtp!=null && r.peLtp<r.sni;
+    const ceStyle = ceUp?'color:var(--green);background:var(--green-bg)':ceDn?'color:var(--red);background:var(--red-bg)':'';
+    const peStyle = peUp?'color:var(--green);background:var(--green-bg)':peDn?'color:var(--red);background:var(--red-bg)':'';
     return `<tr style="${r.isAtm?'background:var(--amber-bg)':''}">
       <td style="padding:5px;font-weight:700;${r.isAtm?'color:var(--amber)':''}">${r.strike}${r.isAtm?' <span style="font-size:8px">ATM</span>':''}</td>
-      <td style="padding:5px;text-align:center;font-weight:700;${ceGreen?'color:var(--green);background:var(--green-bg)':''}">${r.ceLtp!=null?'₹'+parseFloat(r.ceLtp).toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;${ceStyle}">${r.ceLtp!=null?'₹'+parseFloat(r.ceLtp).toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center">${r.map!=null?r.map.toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center">${r.mph!=null?r.mph.toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center">${r.mpl!=null?r.mpl.toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center;font-weight:700;color:var(--purple)">${r.sni!=null?r.sni.toFixed(1):'—'}</td>
-      <td style="padding:5px;text-align:center;font-weight:700;${peRed?'color:var(--red);background:var(--red-bg)':''}">${r.peLtp!=null?'₹'+parseFloat(r.peLtp).toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;${peStyle}">${r.peLtp!=null?'₹'+parseFloat(r.peLtp).toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center;color:var(--text3)">${r.mpTime||'—'}</td>
     </tr>`;
   }).join('');
