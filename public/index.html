@@ -598,6 +598,19 @@ const FNO_STOCKS_FALLBACK=['RELIANCE','TCS','HDFCBANK','ICICIBANK','INFY','SBIN'
 
 function getLotSize(sym){ return LOT_SIZE[sym.toUpperCase()]||LOT_SIZE.DEFAULT; }
 
+// Reliable CE/PE detection for a Fyers option-chain contract row.
+// Trading symbols always end in CE/PE (e.g. NSE:NIFTY2571424800CE), which is
+// unambiguous — safer than trusting option_type's exact field name/casing,
+// which is what was causing CE/PE to render swapped (ITM calls showing OTM-cheap
+// prices etc.) across the option chain, OI tracker, and COC.
+function fyOptType(x){
+  const s=(x.symbol||x.fy_symbol||x.tradingsymbol||'').toUpperCase();
+  if(s.endsWith('CE')) return 'CE';
+  if(s.endsWith('PE')) return 'PE';
+  const t=(x.option_type||x.optionType||'').toString().toUpperCase();
+  return (t==='CE'||t==='PE') ? t : null;
+}
+
 // ================================================================
 // STATE
 // ================================================================
@@ -939,8 +952,8 @@ async function loadOILive(){
     const chain=d.data||{};
     const spot=(chain.optionsChain?.[0]?.ltp)||24000;
     document.getElementById('oiSpot').textContent='NIFTY: '+spot.toLocaleString('en-IN');
-    const ceI=(chain.optionsChain||[]).filter(x=>x.option_type==='CE').slice(0,8);
-    const peI=(chain.optionsChain||[]).filter(x=>x.option_type==='PE').slice(0,8);
+    const ceI=(chain.optionsChain||[]).filter(x=>fyOptType(x)==='CE').slice(0,8);
+    const peI=(chain.optionsChain||[]).filter(x=>fyOptType(x)==='PE').slice(0,8);
     const ceC=ceI.reduce((s,x)=>s+(x.oi_change||0),0);
     const peC=peI.reduce((s,x)=>s+(x.oi_change||0),0);
     const diff=ceC-peC;
@@ -1131,7 +1144,7 @@ async function runCocScan(){
     const spot=chain[0]?.ltp||0;
     const atm=Math.round(spot/step)*step;
     const cm={},pm={};
-    chain.forEach(x=>{ if(x.option_type==='CE') cm[x.strike_price]=x; else if(x.option_type==='PE') pm[x.strike_price]=x; });
+    chain.forEach(x=>{ const t=fyOptType(x); if(t==='CE') cm[x.strike_price]=x; else if(t==='PE') pm[x.strike_price]=x; });
 
     // Day Open/High/Low of the underlying spot
     let dayO=0,dayH=0,dayL=0;
@@ -1255,7 +1268,7 @@ async function loadOCLive(sym,exp){
     const spot=chain[0]?.ltp||24000;
     const atm=Math.round(spot/50)*50;
     const cm={},pm={};
-    chain.forEach(x=>{ if(x.option_type==='CE') cm[x.strike_price]=x; else if(x.option_type==='PE') pm[x.strike_price]=x; });
+    chain.forEach(x=>{ const t=fyOptType(x); if(t==='CE') cm[x.strike_price]=x; else if(t==='PE') pm[x.strike_price]=x; });
     const strikes=[...new Set(chain.map(x=>x.strike_price))].sort((a,b)=>a-b);
     renderOC(strikes,cm,pm,atm,spot,sym,exp);
     document.getElementById('ocSt').textContent=sym+' Spot:'+spot.toFixed(2)+' ATM:'+atm+' · LIVE';
