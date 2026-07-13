@@ -75,6 +75,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .seg-tabs{display:flex;gap:5px;margin-bottom:9px}
 .seg-tab{flex:1;padding:6px;border-radius:7px;font-size:12px;font-weight:700;text-align:center;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer}
 .seg-tab.active{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
+.coc-tf-btn{padding:5px 9px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer}
+.coc-tf-btn.active{border-color:var(--amber);color:var(--amber);background:var(--amber-bg)}
 .buy-sell{display:flex;border-radius:8px;overflow:hidden;margin-bottom:9px;border:1px solid var(--border)}
 .bs-btn{flex:1;padding:9px;font-size:14px;font-weight:700;border:none;cursor:pointer;background:var(--bg);color:var(--text2)}
 .bs-btn.buy.active{background:var(--green-dim);color:var(--green)}
@@ -310,11 +312,11 @@ canvas.mc{width:100%;height:58px}
           <thead><tr style="border-bottom:1px solid var(--border);color:var(--text3)">
             <th style="padding:5px;text-align:left">Strike</th>
             <th style="padding:5px">CE LTP</th>
+            <th style="padding:5px">SNI</th>
+            <th style="padding:5px">PE LTP</th>
             <th style="padding:5px">MAP</th>
             <th style="padding:5px">MPH</th>
             <th style="padding:5px">MPL</th>
-            <th style="padding:5px">SNI</th>
-            <th style="padding:5px">PE LTP</th>
             <th style="padding:5px">MP Time</th>
           </tr></thead>
           <tbody id="cocBody"><tr><td colspan="8" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr></tbody>
@@ -531,6 +533,47 @@ canvas.mc{width:100%;height:58px}
         </thead>
         <tbody id="ocBody"><tr><td colspan="9" style="padding:18px;color:var(--text3)">Loading…</td></tr></tbody>
       </table>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- COC PAIR CANDLE CHART MODAL -->
+<div class="overlay" id="cocChartModal">
+<div class="mbox" style="padding:0;max-height:92vh;display:flex;flex-direction:column">
+  <div style="padding:12px;background:#120a2e;border-radius:18px 18px 0 0;flex-shrink:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <div style="font-size:14px;font-weight:700;color:var(--amber)" id="cocChartTitle">🎯 Strike</div>
+      <button onclick="closeCocChart()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer">✕</button>
+    </div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center">
+      <div style="display:flex;gap:3px;flex-wrap:wrap" id="cocTfBtns">
+        <button onclick="setCocTf(1)" class="coc-tf-btn" data-tf="1">1m</button>
+        <button onclick="setCocTf(3)" class="coc-tf-btn" data-tf="3">3m</button>
+        <button onclick="setCocTf(5)" class="coc-tf-btn" data-tf="5">5m</button>
+        <button onclick="setCocTf(15)" class="coc-tf-btn" data-tf="15">15m</button>
+        <button onclick="setCocTf(25)" class="coc-tf-btn" data-tf="25">25m</button>
+        <button onclick="setCocTf(75)" class="coc-tf-btn" data-tf="75">75m</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text2);cursor:pointer;margin-left:auto">
+        <input type="checkbox" id="cocChartLive" checked onchange="toggleCocChartLive()"/> 🔄 Live
+      </label>
+    </div>
+    <div id="cocChartSt" style="font-size:9px;color:var(--text3);margin-top:5px">Loading…</div>
+  </div>
+  <div style="padding:8px 10px;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">
+    <div style="font-size:10px;color:#60a5fa;font-weight:700;margin-bottom:2px">CE — Call</div>
+    <canvas id="cocCeCanvas" style="width:100%;height:130px;display:block;background:var(--bg);border-radius:6px"></canvas>
+    <div style="font-size:10px;color:#f87171;font-weight:700;margin:8px 0 2px">PE — Put</div>
+    <canvas id="cocPeCanvas" style="width:100%;height:130px;display:block;background:var(--bg);border-radius:6px"></canvas>
+  </div>
+  <div style="padding:10px;border-top:1px solid var(--border);flex-shrink:0">
+    <div style="font-size:9px;color:var(--text3);text-align:center;margin-bottom:7px">Tap Buy/Sell to jump to the Order tab, pre-filled with this strike & leg</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
+      <button onclick="cocPickAndOrder('CE','BUY')" style="padding:9px;border-radius:8px;border:1px solid var(--green);background:var(--green-bg);color:var(--green);font-size:12px;font-weight:700;cursor:pointer">BUY CE</button>
+      <button onclick="cocPickAndOrder('CE','SELL')" style="padding:9px;border-radius:8px;border:1px solid var(--red);background:var(--red-bg);color:var(--red);font-size:12px;font-weight:700;cursor:pointer">SELL CE</button>
+      <button onclick="cocPickAndOrder('PE','BUY')" style="padding:9px;border-radius:8px;border:1px solid var(--green);background:var(--green-bg);color:var(--green);font-size:12px;font-weight:700;cursor:pointer">BUY PE</button>
+      <button onclick="cocPickAndOrder('PE','SELL')" style="padding:9px;border-radius:8px;border:1px solid var(--red);background:var(--red-bg);color:var(--red);font-size:12px;font-weight:700;cursor:pointer">SELL PE</button>
     </div>
   </div>
 </div>
@@ -1151,7 +1194,7 @@ async function runCocScan(){
     const ts=match?match.expiry:'';
 
     stSt.textContent='Loading chain…';
-    let url='/api/optionchain?symbol='+baseSymbol+'&strikecount=13'; // buffer beyond ATM±5 so OTM-neighbor SNI lookups always resolve
+    let url='/api/optionchain?symbol='+baseSymbol+'&strikecount=17'; // buffer beyond ATM±7 so OTM-neighbor SNI lookups always resolve
     if(ts) url+='&timestamp='+ts;
     const r=await fetch(url,{headers:{'Authorization':auth}});
     const d=await r.json();
@@ -1178,7 +1221,7 @@ async function runCocScan(){
       <span style="${ol?'color:var(--red);font-weight:700':''}">L: ${dayL.toFixed(2)}${ol?' (O=L)':''}</span>
     `;
 
-    const strikes=[]; for(let i=-5;i<=5;i++) strikes.push(atm+i*step);
+    const strikes=[]; for(let i=-7;i<=7;i++) strikes.push(atm+i*step);
     const pdcFrom=new Date(today.getTime()-6*86400000);
     cocData=strikes.map(s=>({strike:s,ceLtp:null,peLtp:null,map:null,mph:null,mpl:null,mpTime:null,sni:null,isAtm:s===atm}));
     renderCocTable();
@@ -1301,16 +1344,141 @@ function renderCocTable(){
     const ceStyle = ceUp?'color:var(--green);background:var(--green-bg)':ceDn?'color:var(--red);background:var(--red-bg)':'';
     const peStyle = peUp?'color:var(--green);background:var(--green-bg)':peDn?'color:var(--red);background:var(--red-bg)':'';
     return `<tr style="${r.isAtm?'background:var(--amber-bg)':''}">
-      <td style="padding:5px;font-weight:700;${r.isAtm?'color:var(--amber)':''}">${r.strike}${r.isAtm?' <span style="font-size:8px">ATM</span>':''}</td>
+      <td style="padding:5px;font-weight:700;cursor:pointer;text-decoration:underline dotted;${r.isAtm?'color:var(--amber)':'color:var(--blue)'}" onclick="openCocChart(${r.strike})">${r.strike}${r.isAtm?' <span style="font-size:8px">ATM</span>':''}</td>
       <td style="padding:5px;text-align:center;font-weight:700;${ceStyle}">${r.ceLtp!=null?'₹'+parseFloat(r.ceLtp).toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;color:var(--purple)">${r.sni!=null?r.sni.toFixed(1):'—'}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;${peStyle}">${r.peLtp!=null?'₹'+parseFloat(r.peLtp).toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center">${r.map!=null?r.map.toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center">${r.mph!=null?r.mph.toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center">${r.mpl!=null?r.mpl.toFixed(1):'—'}</td>
-      <td style="padding:5px;text-align:center;font-weight:700;color:var(--purple)">${r.sni!=null?r.sni.toFixed(1):'—'}</td>
-      <td style="padding:5px;text-align:center;font-weight:700;${peStyle}">${r.peLtp!=null?'₹'+parseFloat(r.peLtp).toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center;color:var(--text3)">${r.mpTime||'—'}</td>
     </tr>`;
   }).join('');
+}
+
+// ================================================================
+// COC PAIR CANDLE CHART POPUP
+// Click a strike in the COC board -> paired CE/PE candlestick chart,
+// 1m/3m/5m/15m/25m/75m timeframes, optional live auto-refresh, and
+// Buy/Sell buttons that hand off straight into the Order tab.
+// ================================================================
+let cocChartState={strike:null,ceSymbol:null,peSymbol:null,tf:3,liveTimer:null};
+
+function openCocChart(strike){
+  const row=cocData.find(r=>r.strike===strike);
+  if(!row || !row.ceSymbol || !row.peSymbol){ showToast('Run a Scan first'); return; }
+  cocChartState.strike=strike;
+  cocChartState.ceSymbol=row.ceSymbol;
+  cocChartState.peSymbol=row.peSymbol;
+  document.getElementById('cocChartTitle').textContent='🎯 '+document.getElementById('cocSym').value+' '+strike+(row.isAtm?' (ATM)':'');
+  openModal('cocChartModal');
+  setCocTf(3); // default 3m — also triggers the first load
+  if(document.getElementById('cocChartLive').checked) startCocChartLive();
+}
+
+function closeCocChart(){
+  closeModal('cocChartModal');
+  if(cocChartState.liveTimer){ clearInterval(cocChartState.liveTimer); cocChartState.liveTimer=null; }
+}
+
+function setCocTf(tf){
+  cocChartState.tf=tf;
+  document.querySelectorAll('.coc-tf-btn').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.tf)===tf));
+  loadCocChart();
+}
+
+function toggleCocChartLive(){
+  const on=document.getElementById('cocChartLive').checked;
+  if(cocChartState.liveTimer){ clearInterval(cocChartState.liveTimer); cocChartState.liveTimer=null; }
+  if(on) startCocChartLive();
+}
+function startCocChartLive(){
+  if(cocChartState.liveTimer) clearInterval(cocChartState.liveTimer);
+  cocChartState.liveTimer=setInterval(loadCocChart,10000); // refresh candles every 10s while the popup is open
+}
+
+async function loadCocChart(){
+  const {ceSymbol,peSymbol,tf}=cocChartState;
+  if(!ceSymbol||!peSymbol) return;
+  const stSt=document.getElementById('cocChartSt');
+  stSt.textContent='Loading '+tf+'m candles…';
+  try{
+    const today=new Date();
+    const [ce1m,pe1m]=await Promise.all([
+      fetchHistory(ceSymbol,'1',ymd(today),ymd(today)),
+      fetchHistory(peSymbol,'1',ymd(today),ymd(today))
+    ]);
+    const ceC=tf===1?ce1m:resampleCandles(ce1m,tf);
+    const peC=tf===1?pe1m:resampleCandles(pe1m,tf);
+    drawCandles('cocCeCanvas',ceC);
+    drawCandles('cocPeCanvas',peC);
+    stSt.textContent=tf+'m · '+ceC.length+' candles · updated '+new Date().toTimeString().slice(0,8);
+  }catch(e){
+    stSt.textContent='⚠️ '+e.message;
+    console.error('COC chart load failed:',e);
+  }
+}
+
+// Minimal dependency-free candlestick renderer (no charting library needed —
+// keeps the app self-contained, nothing that can fail to load from a CDN).
+function drawCandles(canvasId,candles){
+  const canvas=document.getElementById(canvasId);
+  if(!canvas) return;
+  const dpr=window.devicePixelRatio||1;
+  const w=canvas.clientWidth||300, h=canvas.clientHeight||130;
+  canvas.width=w*dpr; canvas.height=h*dpr;
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  if(!candles || !candles.length){
+    ctx.fillStyle='#666'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('No candle data yet', w/2, h/2);
+    return;
+  }
+  const pad=6;
+  const hi=Math.max(...candles.map(c=>c.h)), lo=Math.min(...candles.map(c=>c.l));
+  const range=(hi-lo)||1;
+  const cw=(w-pad*2)/candles.length;
+  const yOf=v=>h-pad-((v-lo)/range)*(h-pad*2);
+  candles.forEach((c,i)=>{
+    const x=pad+i*cw+cw/2;
+    const up=c.c>=c.o;
+    ctx.strokeStyle=ctx.fillStyle=up?'#26c281':'#ef4444';
+    ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,yOf(c.h)); ctx.lineTo(x,yOf(c.l)); ctx.stroke();
+    const bw=Math.max(1,cw*0.6);
+    const yO=yOf(c.o), yC=yOf(c.c);
+    ctx.fillRect(x-bw/2, Math.min(yO,yC), bw, Math.max(1,Math.abs(yC-yO)));
+  });
+}
+
+// Sends the picked strike/leg straight to the Order tab, pre-filled — mirrors
+// pickStrike() from the main Option Chain modal so it behaves identically.
+function cocPickAndOrder(otype,side){
+  const row=cocData.find(r=>r.strike===cocChartState.strike);
+  if(!row){ showToast('Strike data not found — try re-scanning'); return; }
+  const sym=document.getElementById('cocSym').value;
+  const exp=document.getElementById('cocExp').value;
+  const ceLtp=row.ceLtp||0, peLtp=row.peLtp||0;
+  setSeg('OPT');
+  document.getElementById('oTyp').value=otype;
+  document.getElementById('oStk').value=row.strike;
+  document.getElementById('oExp').value=exp;
+  document.getElementById('fSym').value=sym;
+  document.getElementById('fExch').value='NFO';
+  window.pickedOpt={strike:row.strike,sym,exp,ceFySym:row.ceSymbol||'',peFySym:row.peSymbol||'',ceLtp,peLtp};
+  const ltp=otype==='CE'?ceLtp:peLtp;
+  if(ltp>0) document.getElementById('fPrice').value=parseFloat(ltp).toFixed(2);
+  const ls=getLotSize(sym);
+  document.getElementById('oLotSz').value=ls+' shares/lot';
+  const info=document.getElementById('selStrikeInfo');
+  info.style.display='block';
+  info.textContent='✅ '+sym+' '+exp+' '+row.strike+otype+' | CE ₹'+parseFloat(ceLtp).toFixed(2)+' | PE ₹'+parseFloat(peLtp).toFixed(2)+' | Lot:'+ls;
+  setBuySell(side);
+  closeCocChart();
+  switchTab('order',document.getElementById('nav-order'));
+  showToast(sym+' '+row.strike+otype+' '+side+' — review & place');
+  updateOrderSummary();
 }
 
 // ================================================================
