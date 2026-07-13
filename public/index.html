@@ -77,6 +77,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .seg-tab.active{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
 .coc-tf-btn{padding:5px 9px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer}
 .coc-tf-btn.active{border-color:var(--amber);color:var(--amber);background:var(--amber-bg)}
+.coc-days-btn{padding:5px 9px;border-radius:6px;font-size:10px;font-weight:700;border:1px solid var(--border);background:var(--bg);color:var(--text2);cursor:pointer}
+.coc-days-btn.active{border-color:var(--blue);color:var(--blue);background:var(--blue-bg)}
 .buy-sell{display:flex;border-radius:8px;overflow:hidden;margin-bottom:9px;border:1px solid var(--border)}
 .bs-btn{flex:1;padding:9px;font-size:14px;font-weight:700;border:none;cursor:pointer;background:var(--bg);color:var(--text2)}
 .bs-btn.buy.active{background:var(--green-dim);color:var(--green)}
@@ -558,6 +560,12 @@ canvas.mc{width:100%;height:58px}
       <label style="display:flex;align-items:center;gap:3px;font-size:10px;color:var(--text2);cursor:pointer;margin-left:auto">
         <input type="checkbox" id="cocChartLive" checked onchange="toggleCocChartLive()"/> 🔄 Live
       </label>
+    </div>
+    <div style="display:flex;gap:3px;margin-top:5px" id="cocDaysBtns">
+      <button onclick="setCocDays(1)" class="coc-days-btn" data-days="1">1D</button>
+      <button onclick="setCocDays(3)" class="coc-days-btn" data-days="3">3D</button>
+      <button onclick="setCocDays(7)" class="coc-days-btn" data-days="7">7D</button>
+      <span style="font-size:9px;color:var(--text3);align-self:center;margin-left:4px">history window · 7D can be slower to load</span>
     </div>
     <div id="cocChartSt" style="font-size:9px;color:var(--text3);margin-top:5px">Loading…</div>
   </div>
@@ -1284,15 +1292,17 @@ function toggleCocAuto(){
   cocFastTimer=null; cocSlowTimer=null;
   if(!on) return;
   if(!cocData.length){ showToast('Run a Scan first, then turn Auto on'); document.getElementById('cocAuto').checked=false; return; }
-  cocFastTimer=setInterval(cocFastRefresh,7000);
-  cocSlowTimer=setInterval(cocSlowRefresh,60000);
+  cocFastTimer=setInterval(cocFastRefresh,5000);
+  cocSlowTimer=setInterval(cocSlowRefresh,9000);
 }
 
+let cocFastRunning=false;
 async function cocFastRefresh(){
-  if(cocScanning || !ST.fyToken || !cocData.length) return;
+  if(cocFastRunning || cocScanning || !ST.fyToken || !cocData.length) return;
+  cocFastRunning=true;
   const symbols=[];
   cocData.forEach(r=>{ if(r.ceSymbol) symbols.push(r.ceSymbol); if(r.peSymbol) symbols.push(r.peSymbol); });
-  if(!symbols.length) return;
+  if(!symbols.length){ cocFastRunning=false; return; }
   try{
     const auth=FYERS_APP_ID+':'+ST.fyToken;
     const r=await fetch('/api/quotes?symbols='+encodeURIComponent(symbols.join(',')),{headers:{'Authorization':auth}});
@@ -1308,28 +1318,36 @@ async function cocFastRefresh(){
     const stSt=document.getElementById('cocSt');
     if(stSt) stSt.textContent='🔄 Live · last LTP update '+new Date().toTimeString().slice(0,8);
   }catch(e){ console.warn('COC fast refresh failed:',e.message); }
+  cocFastRunning=false;
 }
 
+let cocSlowRunning=false;
 async function cocSlowRefresh(){
-  if(cocScanning || !ST.fyToken || !cocData.length) return;
-  for(const row of cocData){
-    if(!row.ceSymbol || !row.peSymbol) continue;
-    try{
-      const today=new Date();
-      const [ce1m,pe1m]=await Promise.all([
-        fetchHistory(row.ceSymbol,'1',ymd(today),ymd(today)),
-        fetchHistory(row.peSymbol,'1',ymd(today),ymd(today))
-      ]);
-      const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
-      const n=Math.min(ce3.length,pe3.length);
-      for(let i=n-1;i>=0;i--){
-        const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
-        if(lo<=hi){ row.map=(lo+hi)/2; row.mph=hi; row.mpl=lo; row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5); break; }
-      }
-    }catch(e){ console.warn('COC slow refresh failed for',row.strike,e.message); }
-    await new Promise(res=>setTimeout(res,150)); // same gentle pacing as the full scan
+  if(cocSlowRunning || cocScanning || !ST.fyToken || !cocData.length) return;
+  cocSlowRunning=true;
+  const rows=cocData.filter(r=>r.ceSymbol && r.peSymbol);
+  const BATCH=5; // 5 strikes (=10 concurrent Fyers calls) per batch, small pause between batches
+  for(let b=0;b<rows.length;b+=BATCH){
+    const batch=rows.slice(b,b+BATCH);
+    await Promise.all(batch.map(async row=>{
+      try{
+        const today=new Date();
+        const [ce1m,pe1m]=await Promise.all([
+          fetchHistory(row.ceSymbol,'1',ymd(today),ymd(today)),
+          fetchHistory(row.peSymbol,'1',ymd(today),ymd(today))
+        ]);
+        const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
+        const n=Math.min(ce3.length,pe3.length);
+        for(let i=n-1;i>=0;i--){
+          const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
+          if(lo<=hi){ row.map=(lo+hi)/2; row.mph=hi; row.mpl=lo; row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5); break; }
+        }
+      }catch(e){ console.warn('COC slow refresh failed for',row.strike,e.message); }
+    }));
+    renderCocTable(); // paint progressively, batch by batch
+    if(b+BATCH<rows.length) await new Promise(res=>setTimeout(res,150));
   }
-  renderCocTable();
+  cocSlowRunning=false;
 }
 
 function renderCocTable(){
@@ -1362,7 +1380,8 @@ function renderCocTable(){
 // 1m/3m/5m/15m/25m/75m timeframes, optional live auto-refresh, and
 // Buy/Sell buttons that hand off straight into the Order tab.
 // ================================================================
-let cocChartState={strike:null,ceSymbol:null,peSymbol:null,tf:3,liveTimer:null};
+let cocChartState={strike:null,ceSymbol:null,peSymbol:null,tf:3,days:3,liveTimer:null};
+let cocHistCache={}; // symbol -> {days:N, past:[1m candles excluding today]} — past days never change, so cache them once
 
 function openCocChart(strike){
   const row=cocData.find(r=>r.strike===strike);
@@ -1370,9 +1389,13 @@ function openCocChart(strike){
   cocChartState.strike=strike;
   cocChartState.ceSymbol=row.ceSymbol;
   cocChartState.peSymbol=row.peSymbol;
+  cocChartState.tf=3;
+  cocChartState.days=3; // 3-day default — fast; bump to 7D in the popup if you want more history
   document.getElementById('cocChartTitle').textContent='🎯 '+document.getElementById('cocSym').value+' '+strike+(row.isAtm?' (ATM)':'');
+  document.querySelectorAll('.coc-tf-btn').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.tf)===3));
+  document.querySelectorAll('.coc-days-btn').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.days)===3));
   openModal('cocChartModal');
-  setCocTf(3); // default 3m — also triggers the first load
+  loadCocChart();
   if(document.getElementById('cocChartLive').checked) startCocChartLive();
 }
 
@@ -1387,6 +1410,12 @@ function setCocTf(tf){
   loadCocChart();
 }
 
+function setCocDays(d){
+  cocChartState.days=d;
+  document.querySelectorAll('.coc-days-btn').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.days)===d));
+  loadCocChart();
+}
+
 function toggleCocChartLive(){
   const on=document.getElementById('cocChartLive').checked;
   if(cocChartState.liveTimer){ clearInterval(cocChartState.liveTimer); cocChartState.liveTimer=null; }
@@ -1394,25 +1423,42 @@ function toggleCocChartLive(){
 }
 function startCocChartLive(){
   if(cocChartState.liveTimer) clearInterval(cocChartState.liveTimer);
-  cocChartState.liveTimer=setInterval(loadCocChart,10000); // refresh candles every 10s while the popup is open
+  cocChartState.liveTimer=setInterval(loadCocChart,8000); // refresh candles every 8s while the popup is open
+}
+
+// Past days (before today) never change, so fetch them once per symbol and
+// reuse — only today's slice gets re-fetched on every live refresh tick.
+async function getPastCandles(symbol,days){
+  if(days<=1) return [];
+  const cached=cocHistCache[symbol];
+  if(cached && cached.days>=days) return cached.past;
+  const today=new Date();
+  const fromDate=new Date(today); fromDate.setDate(fromDate.getDate()-(days-1));
+  const toDate=new Date(today); toDate.setDate(toDate.getDate()-1); // up to yesterday
+  const past=await fetchHistory(symbol,'1',ymd(fromDate),ymd(toDate));
+  cocHistCache[symbol]={days,past};
+  return past;
 }
 
 async function loadCocChart(){
-  const {ceSymbol,peSymbol,tf}=cocChartState;
+  const {ceSymbol,peSymbol,tf,days}=cocChartState;
   if(!ceSymbol||!peSymbol) return;
   const stSt=document.getElementById('cocChartSt');
-  stSt.textContent='Loading '+tf+'m candles…';
+  stSt.textContent='Loading '+tf+'m candles ('+days+'D)…';
   try{
     const today=new Date();
-    const [ce1m,pe1m]=await Promise.all([
+    const [cePast,pePast,ceToday,peToday]=await Promise.all([
+      getPastCandles(ceSymbol,days),
+      getPastCandles(peSymbol,days),
       fetchHistory(ceSymbol,'1',ymd(today),ymd(today)),
       fetchHistory(peSymbol,'1',ymd(today),ymd(today))
     ]);
+    const ce1m=[...cePast,...ceToday], pe1m=[...pePast,...peToday];
     const ceC=tf===1?ce1m:resampleCandles(ce1m,tf);
     const peC=tf===1?pe1m:resampleCandles(pe1m,tf);
     drawCandles('cocCeCanvas',ceC);
     drawCandles('cocPeCanvas',peC);
-    stSt.textContent=tf+'m · '+ceC.length+' candles · updated '+new Date().toTimeString().slice(0,8);
+    stSt.textContent=tf+'m · '+days+'D · '+ceC.length+' candles · updated '+new Date().toTimeString().slice(0,8);
   }catch(e){
     stSt.textContent='⚠️ '+e.message;
     console.error('COC chart load failed:',e);
