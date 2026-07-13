@@ -542,9 +542,9 @@ canvas.mc{width:100%;height:58px}
 
 <!-- COC PAIR CANDLE CHART MODAL -->
 <div class="overlay" id="cocChartModal">
-<div class="mbox" style="padding:0;max-height:92vh;display:flex;flex-direction:column">
-  <div style="padding:12px;background:#120a2e;border-radius:18px 18px 0 0;flex-shrink:0">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+<div class="mbox" style="padding:0;height:94vh;max-height:94vh;display:flex;flex-direction:column">
+  <div style="padding:10px 12px;background:#120a2e;border-radius:18px 18px 0 0;flex-shrink:0">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
       <div style="font-size:14px;font-weight:700;color:var(--amber)" id="cocChartTitle">🎯 Strike</div>
       <button onclick="closeCocChart()" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer">✕</button>
     </div>
@@ -561,27 +561,25 @@ canvas.mc{width:100%;height:58px}
         <input type="checkbox" id="cocChartLive" checked onchange="toggleCocChartLive()"/> 🔄 Live
       </label>
     </div>
-    <div style="display:flex;gap:3px;margin-top:5px" id="cocDaysBtns">
+    <div style="display:flex;gap:3px;margin-top:5px;align-items:center" id="cocDaysBtns">
       <button onclick="setCocDays(1)" class="coc-days-btn" data-days="1">1D</button>
       <button onclick="setCocDays(3)" class="coc-days-btn" data-days="3">3D</button>
       <button onclick="setCocDays(7)" class="coc-days-btn" data-days="7">7D</button>
-      <span style="font-size:9px;color:var(--text3);align-self:center;margin-left:4px">history window · 7D can be slower to load</span>
+      <span style="font-size:9px;color:var(--text3);margin-left:4px" id="cocChartSt">Loading…</span>
     </div>
-    <div id="cocChartSt" style="font-size:9px;color:var(--text3);margin-top:5px">Loading…</div>
   </div>
-  <div style="padding:8px 10px;flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch">
-    <div style="font-size:10px;color:#60a5fa;font-weight:700;margin-bottom:2px">CE — Call</div>
-    <canvas id="cocCeCanvas" style="width:100%;height:130px;display:block;background:var(--bg);border-radius:6px"></canvas>
-    <div style="font-size:10px;color:#f87171;font-weight:700;margin:8px 0 2px">PE — Put</div>
-    <canvas id="cocPeCanvas" style="width:100%;height:130px;display:block;background:var(--bg);border-radius:6px"></canvas>
+  <div style="padding:6px 10px;flex:1;min-height:0;display:flex;flex-direction:column">
+    <div style="font-size:10px;color:#60a5fa;font-weight:700;margin-bottom:2px;flex-shrink:0">CE — Call</div>
+    <canvas id="cocCeCanvas" style="width:100%;flex:1;min-height:100px;display:block;background:var(--bg);border-radius:6px"></canvas>
+    <div style="font-size:10px;color:#f87171;font-weight:700;margin:6px 0 2px;flex-shrink:0">PE — Put</div>
+    <canvas id="cocPeCanvas" style="width:100%;flex:1;min-height:100px;display:block;background:var(--bg);border-radius:6px"></canvas>
   </div>
-  <div style="padding:10px;border-top:1px solid var(--border);flex-shrink:0">
-    <div style="font-size:9px;color:var(--text3);text-align:center;margin-bottom:7px">Tap Buy/Sell to jump to the Order tab, pre-filled with this strike & leg</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">
-      <button onclick="cocPickAndOrder('CE','BUY')" style="padding:9px;border-radius:8px;border:1px solid var(--green);background:var(--green-bg);color:var(--green);font-size:12px;font-weight:700;cursor:pointer">BUY CE</button>
-      <button onclick="cocPickAndOrder('CE','SELL')" style="padding:9px;border-radius:8px;border:1px solid var(--red);background:var(--red-bg);color:var(--red);font-size:12px;font-weight:700;cursor:pointer">SELL CE</button>
-      <button onclick="cocPickAndOrder('PE','BUY')" style="padding:9px;border-radius:8px;border:1px solid var(--green);background:var(--green-bg);color:var(--green);font-size:12px;font-weight:700;cursor:pointer">BUY PE</button>
-      <button onclick="cocPickAndOrder('PE','SELL')" style="padding:9px;border-radius:8px;border:1px solid var(--red);background:var(--red-bg);color:var(--red);font-size:12px;font-weight:700;cursor:pointer">SELL PE</button>
+  <div style="padding:8px 10px;border-top:1px solid var(--border);flex-shrink:0">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:5px">
+      <button onclick="cocPickAndOrder('CE','BUY')" style="padding:9px 2px;border-radius:8px;border:1px solid var(--green);background:var(--green-bg);color:var(--green);font-size:11px;font-weight:700;cursor:pointer">BUY CE</button>
+      <button onclick="cocPickAndOrder('CE','SELL')" style="padding:9px 2px;border-radius:8px;border:1px solid var(--red);background:var(--red-bg);color:var(--red);font-size:11px;font-weight:700;cursor:pointer">SELL CE</button>
+      <button onclick="cocPickAndOrder('PE','BUY')" style="padding:9px 2px;border-radius:8px;border:1px solid var(--green);background:var(--green-bg);color:var(--green);font-size:11px;font-weight:700;cursor:pointer">BUY PE</button>
+      <button onclick="cocPickAndOrder('PE','SELL')" style="padding:9px 2px;border-radius:8px;border:1px solid var(--red);background:var(--red-bg);color:var(--red);font-size:11px;font-weight:700;cursor:pointer">SELL PE</button>
     </div>
   </div>
 </div>
@@ -702,7 +700,7 @@ if(!ST.wl||!ST.wl.length){
 document.getElementById('sCap').value=ST.capital;
 document.getElementById('sTok').value=ST.fyToken||'';
 
-renderAll(); simPrices(); drawChart(); updLoginBtn();
+renderAll(); simPrices(); drawChart(); updLoginBtn(); initCocCrosshair();
 if(ST.fyToken) startLiveFeed();
 
 // ================================================================
@@ -1456,8 +1454,10 @@ async function loadCocChart(){
     const ce1m=[...cePast,...ceToday], pe1m=[...pePast,...peToday];
     const ceC=tf===1?ce1m:resampleCandles(ce1m,tf);
     const peC=tf===1?pe1m:resampleCandles(pe1m,tf);
-    drawCandles('cocCeCanvas',ceC);
-    drawCandles('cocPeCanvas',peC);
+    cocChartCandles.ce=ceC; cocChartCandles.pe=peC;
+    cocHoverTime=null; // fresh data — drop any stale crosshair position
+    drawCandles('cocCeCanvas',ceC,null);
+    drawCandles('cocPeCanvas',peC,null);
     stSt.textContent=tf+'m · '+days+'D · '+ceC.length+' candles · updated '+new Date().toTimeString().slice(0,8);
   }catch(e){
     stSt.textContent='⚠️ '+e.message;
@@ -1465,9 +1465,72 @@ async function loadCocChart(){
   }
 }
 
+// Shared crosshair state — a TIME (not an index), so touching a candle on
+// one chart finds the nearest-matching candle by timestamp on the other,
+// even if the two legs have slightly different candle counts (e.g. one leg
+// missed a trade in some minute the other didn't).
+let cocChartCandles={ce:[],pe:[]};
+let cocHoverTime=null;
+
+function cocNearestIdx(candles,t){
+  if(!candles || !candles.length || t==null) return null;
+  let best=0,bestDiff=Infinity;
+  for(let i=0;i<candles.length;i++){
+    const diff=Math.abs(candles[i].t-t);
+    if(diff<bestDiff){ bestDiff=diff; best=i; }
+  }
+  return best;
+}
+
+function cocRedrawCharts(){
+  const ceIdx=cocHoverTime!=null?cocNearestIdx(cocChartCandles.ce,cocHoverTime):null;
+  const peIdx=cocHoverTime!=null?cocNearestIdx(cocChartCandles.pe,cocHoverTime):null;
+  drawCandles('cocCeCanvas',cocChartCandles.ce,ceIdx);
+  drawCandles('cocPeCanvas',cocChartCandles.pe,peIdx);
+}
+
+function cocPointerX(canvas,e){
+  const rect=canvas.getBoundingClientRect();
+  const clientX=(e.clientX!=null)?e.clientX:(e.touches&&e.touches[0]?e.touches[0].clientX:null);
+  return clientX==null?null:clientX-rect.left;
+}
+
+function cocOnPointer(e,leg){
+  const canvas=document.getElementById(leg==='ce'?'cocCeCanvas':'cocPeCanvas');
+  const x=cocPointerX(canvas,e);
+  const candles=cocChartCandles[leg];
+  if(x==null || !candles || !candles.length) return;
+  e.preventDefault();
+  const padX=4;
+  const cw=(canvas.clientWidth-padX*2)/candles.length;
+  let idx=Math.floor((x-padX)/cw);
+  if(idx<0) idx=0; if(idx>candles.length-1) idx=candles.length-1;
+  cocHoverTime=candles[idx].t;
+  cocRedrawCharts();
+}
+
+function cocClearHover(){
+  cocHoverTime=null;
+  cocRedrawCharts();
+}
+
+function initCocCrosshair(){
+  ['cocCeCanvas','cocPeCanvas'].forEach(id=>{
+    const canvas=document.getElementById(id); if(!canvas) return;
+    const leg=id==='cocCeCanvas'?'ce':'pe';
+    canvas.style.touchAction='none';
+    canvas.addEventListener('pointerdown',e=>cocOnPointer(e,leg));
+    canvas.addEventListener('pointermove',e=>{ if(e.buttons||e.pointerType==='touch') cocOnPointer(e,leg); });
+    canvas.addEventListener('pointerup',cocClearHover);
+    canvas.addEventListener('pointerleave',cocClearHover);
+    canvas.addEventListener('pointercancel',cocClearHover);
+  });
+}
+
 // Minimal dependency-free candlestick renderer (no charting library needed —
 // keeps the app self-contained, nothing that can fail to load from a CDN).
-function drawCandles(canvasId,candles){
+// hoverIdx (optional): draws a crosshair + OHLC/time readout at that candle.
+function drawCandles(canvasId,candles,hoverIdx){
   const canvas=document.getElementById(canvasId);
   if(!canvas) return;
   const dpr=window.devicePixelRatio||1;
@@ -1481,13 +1544,13 @@ function drawCandles(canvasId,candles){
     ctx.fillText('No candle data yet', w/2, h/2);
     return;
   }
-  const pad=6;
+  const padX=4, padTop=4, padBottom=14; // padBottom reserves room for the time axis
   const hi=Math.max(...candles.map(c=>c.h)), lo=Math.min(...candles.map(c=>c.l));
   const range=(hi-lo)||1;
-  const cw=(w-pad*2)/candles.length;
-  const yOf=v=>h-pad-((v-lo)/range)*(h-pad*2);
+  const cw=(w-padX*2)/candles.length;
+  const yOf=v=>h-padBottom-((v-lo)/range)*(h-padTop-padBottom);
   candles.forEach((c,i)=>{
-    const x=pad+i*cw+cw/2;
+    const x=padX+i*cw+cw/2;
     const up=c.c>=c.o;
     ctx.strokeStyle=ctx.fillStyle=up?'#26c281':'#ef4444';
     ctx.lineWidth=1;
@@ -1496,6 +1559,29 @@ function drawCandles(canvasId,candles){
     const yO=yOf(c.o), yC=yOf(c.c);
     ctx.fillRect(x-bw/2, Math.min(yO,yC), bw, Math.max(1,Math.abs(yC-yO)));
   });
+  // Time axis — a handful of evenly spaced labels, not one per candle
+  const labelEvery=Math.max(1,Math.ceil(candles.length/6));
+  ctx.font='9px sans-serif'; ctx.fillStyle='#7a7f95'; ctx.textAlign='center';
+  candles.forEach((c,i)=>{
+    if(i%labelEvery===0 || i===candles.length-1){
+      const x=padX+i*cw+cw/2;
+      ctx.fillText(new Date(c.t*1000).toTimeString().slice(0,5), Math.min(Math.max(x,14),w-14), h-2);
+    }
+  });
+  // Crosshair + OHLC readout
+  if(hoverIdx!=null && candles[hoverIdx]){
+    const c=candles[hoverIdx];
+    const x=padX+hoverIdx*cw+cw/2;
+    ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(x,padTop); ctx.lineTo(x,h-padBottom); ctx.stroke();
+    ctx.setLineDash([]);
+    const label=new Date(c.t*1000).toTimeString().slice(0,5)+'  O'+c.o.toFixed(1)+' H'+c.h.toFixed(1)+' L'+c.l.toFixed(1)+' C'+c.c.toFixed(1);
+    ctx.font='9px sans-serif';
+    const tw=ctx.measureText(label).width;
+    const bx=Math.min(Math.max(x-tw/2-4,2),w-tw-10);
+    ctx.fillStyle='rgba(0,0,0,.75)'; ctx.fillRect(bx,2,tw+8,13);
+    ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.fillText(label,bx+4,11);
+  }
 }
 
 // Sends the picked strike/leg straight to the Order tab, pre-filled — mirrors
