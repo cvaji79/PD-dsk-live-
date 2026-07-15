@@ -565,22 +565,14 @@ canvas.mc{width:100%;height:58px}
       <button onclick="setCocDays(1)" class="coc-days-btn" data-days="1">1D</button>
       <button onclick="setCocDays(3)" class="coc-days-btn" data-days="3">3D</button>
       <button onclick="setCocDays(7)" class="coc-days-btn" data-days="7">7D</button>
-      <span style="width:1px;height:16px;background:var(--border);margin:0 4px"></span>
-      <button onclick="cocZoomBtn(1.4)" class="coc-days-btn" title="Zoom in">🔍＋</button>
-      <button onclick="cocZoomBtn(1/1.4)" class="coc-days-btn" title="Zoom out">🔍－</button>
-      <button onclick="cocZoomReset()" class="coc-days-btn" title="Reset zoom">⤢</button>
-    </div>
-    <div style="display:flex;gap:3px;margin-top:4px;align-items:center">
-      <button onclick="cocPan(-1)" class="coc-days-btn" title="Scroll to earlier candles">◀ Past</button>
-      <button onclick="cocPan(1)" class="coc-days-btn" title="Scroll toward later candles">Future ▶</button>
-      <button onclick="cocPanNow()" class="coc-days-btn" title="Jump to the latest candle" style="border-color:var(--amber);color:var(--amber)">⏵ Now</button>
       <span style="font-size:9px;color:var(--text3);margin-left:6px" id="cocChartSt">Loading…</span>
     </div>
+    <div style="font-size:9px;color:var(--text3);margin-top:3px">📱 Pinch to zoom, 2-finger drag to pan · 🖱️ Scroll to zoom, click-drag to pan</div>
   </div>
   <div style="padding:6px 10px;flex:1;min-height:0;display:flex;flex-direction:column">
-    <div style="font-size:10px;color:#60a5fa;font-weight:700;margin-bottom:2px;flex-shrink:0">CE — Call</div>
+    <div style="font-size:11px;color:#60a5fa;font-weight:700;margin-bottom:2px;flex-shrink:0" id="cocCeLabel">CE — Call</div>
     <canvas id="cocCeCanvas" style="width:100%;flex:1;min-height:100px;display:block;background:var(--bg);border-radius:6px"></canvas>
-    <div style="font-size:10px;color:#f87171;font-weight:700;margin:6px 0 2px;flex-shrink:0">PE — Put</div>
+    <div style="font-size:11px;color:#f87171;font-weight:700;margin:6px 0 2px;flex-shrink:0" id="cocPeLabel">PE — Put</div>
     <canvas id="cocPeCanvas" style="width:100%;flex:1;min-height:100px;display:block;background:var(--bg);border-radius:6px"></canvas>
   </div>
   <div style="padding:8px 10px;border-top:1px solid var(--border);flex-shrink:0">
@@ -1637,18 +1629,44 @@ function cocOnWheel(e,leg){
   cocRedrawCharts();
 }
 
+let cocMouseDrag={active:false,startX:0,startFrac:0,endFrac:1,canvas:null};
+
+function cocOnMouseDown(e,leg){
+  cocMouseDrag.active=true;
+  cocMouseDrag.startX=e.clientX;
+  cocMouseDrag.startFrac=cocZoom.startFrac;
+  cocMouseDrag.endFrac=cocZoom.endFrac;
+  cocMouseDrag.canvas=document.getElementById(leg==='ce'?'cocCeCanvas':'cocPeCanvas');
+}
+
+function cocOnMouseMove(e,leg){
+  if(cocMouseDrag.active){
+    const canvas=cocMouseDrag.canvas;
+    const padX=4, padRight=38;
+    const plotW=Math.max(1,canvas.clientWidth-padRight-padX);
+    const span=cocMouseDrag.endFrac-cocMouseDrag.startFrac;
+    const dxFrac=-((e.clientX-cocMouseDrag.startX)/plotW)*span;
+    cocZoom.startFrac=cocMouseDrag.startFrac+dxFrac;
+    cocZoom.endFrac=cocMouseDrag.endFrac+dxFrac;
+    cocClampZoom();
+    cocRedrawCharts();
+  }else{
+    cocOnPointer(e,leg); // plain hover -> crosshair
+  }
+}
+
 function initCocCrosshair(){
   ['cocCeCanvas','cocPeCanvas'].forEach(id=>{
     const canvas=document.getElementById(id); if(!canvas) return;
     const leg=id==='cocCeCanvas'?'ce':'pe';
     canvas.style.touchAction='none';
-    // Mouse (desktop): drag to crosshair, wheel to zoom
-    canvas.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse') cocOnPointer(e,leg); });
-    canvas.addEventListener('pointermove',e=>{ if(e.pointerType==='mouse' && e.buttons) cocOnPointer(e,leg); });
-    canvas.addEventListener('pointerup',e=>{ if(e.pointerType==='mouse') cocClearHover(); });
-    canvas.addEventListener('pointerleave',e=>{ if(e.pointerType==='mouse') cocClearHover(); });
+    // Mouse (desktop): hover = crosshair, click-drag = pan, wheel = zoom
+    canvas.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse') cocOnMouseDown(e,leg); });
+    canvas.addEventListener('pointermove',e=>{ if(e.pointerType==='mouse') cocOnMouseMove(e,leg); });
+    canvas.addEventListener('pointerup',e=>{ if(e.pointerType==='mouse'){ cocMouseDrag.active=false; cocClearHover(); } });
+    canvas.addEventListener('pointerleave',e=>{ if(e.pointerType==='mouse'){ cocMouseDrag.active=false; cocClearHover(); } });
     canvas.addEventListener('wheel',e=>cocOnWheel(e,leg),{passive:false});
-    // Touch (mobile): 1 finger = crosshair, 2 fingers = pinch-zoom
+    // Touch (mobile): 1 finger = crosshair, 2 fingers = pinch-zoom + drag-to-pan together
     canvas.addEventListener('touchstart',e=>cocOnTouchStart(e,leg),{passive:false});
     canvas.addEventListener('touchmove',e=>cocOnTouchMove(e,leg),{passive:false});
     canvas.addEventListener('touchend',cocOnTouchEnd);
@@ -1746,7 +1764,8 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     ctx.fillText('SNI '+sni.toFixed(1), padX+2, y-2);
   }
 
-  // Live price line + on-chart readout
+  // Live price line + right-edge price tag (the redundant top-left text
+  // label was moved up into the CE/PE section title instead — less clutter)
   if(liveLtp!=null){
     const y=yOf(liveLtp);
     ctx.strokeStyle=liveColor; ctx.lineWidth=1; ctx.setLineDash([1,2]);
@@ -1755,10 +1774,11 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     ctx.fillStyle=liveColor; ctx.fillRect(w-padRight,y-6,padRight,12);
     ctx.fillStyle='#0a0e1a'; ctx.font='9px sans-serif'; ctx.textAlign='left';
     ctx.fillText(parseFloat(liveLtp).toFixed(1), w-padRight+2, y+3);
-    const tag=(leg==='ce'?'CE Live ₹':'PE Live ₹')+parseFloat(liveLtp).toFixed(1);
-    ctx.fillStyle=liveColor; ctx.font='bold 10px sans-serif'; ctx.textAlign='left';
-    ctx.fillText(tag, padX+2, 11);
   }
+
+  // Keep the section title above the canvas in sync with the live price
+  const labelEl=document.getElementById(leg==='ce'?'cocCeLabel':'cocPeLabel');
+  if(labelEl) labelEl.textContent=(leg==='ce'?'CE — Call':'PE — Put')+(liveLtp!=null?'   ₹'+parseFloat(liveLtp).toFixed(1):'');
 
   // Time axis — a handful of evenly spaced labels, not one per candle
   const labelEvery=Math.max(1,Math.ceil(candles.length/6));
@@ -1782,8 +1802,8 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     ctx.font='9px sans-serif';
     const tw=ctx.measureText(label).width;
     const bx=Math.min(Math.max(x-tw/2-4,2),w-padRight-tw-10);
-    ctx.fillStyle='rgba(0,0,0,.75)'; ctx.fillRect(bx,15,tw+8,13);
-    ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.fillText(label,bx+4,24);
+    ctx.fillStyle='rgba(0,0,0,.75)'; ctx.fillRect(bx,2,tw+8,13);
+    ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.fillText(label,bx+4,11);
   }
 }
 
