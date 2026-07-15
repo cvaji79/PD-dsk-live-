@@ -565,6 +565,10 @@ canvas.mc{width:100%;height:58px}
       <button onclick="setCocDays(1)" class="coc-days-btn" data-days="1">1D</button>
       <button onclick="setCocDays(3)" class="coc-days-btn" data-days="3">3D</button>
       <button onclick="setCocDays(7)" class="coc-days-btn" data-days="7">7D</button>
+      <span style="width:1px;height:16px;background:var(--border);margin:0 4px"></span>
+      <button onclick="cocZoomBtn(1.4)" class="coc-days-btn" title="Zoom in">🔍＋</button>
+      <button onclick="cocZoomBtn(1/1.4)" class="coc-days-btn" title="Zoom out">🔍－</button>
+      <button onclick="cocZoomReset()" class="coc-days-btn" title="Reset zoom">⤢</button>
       <span style="font-size:9px;color:var(--text3);margin-left:4px" id="cocChartSt">Loading…</span>
     </div>
   </div>
@@ -1229,7 +1233,7 @@ async function runCocScan(){
 
     const strikes=[]; for(let i=-7;i<=7;i++) strikes.push(atm+i*step);
     const pdcFrom=new Date(today.getTime()-6*86400000);
-    cocData=strikes.map(s=>({strike:s,ceLtp:null,peLtp:null,map:null,mph:null,mpl:null,mpTime:null,sni:null,isAtm:s===atm}));
+    cocData=strikes.map(s=>({strike:s,ceLtp:null,peLtp:null,map:null,mph:null,mpl:null,mpTime:null,mpTimestamp:null,sni:null,isAtm:s===atm}));
     renderCocTable();
 
     let done=0;
@@ -1251,7 +1255,7 @@ async function runCocScan(){
           const n=Math.min(ce3.length,pe3.length);
           for(let i=n-1;i>=0;i--){
             const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
-            if(lo<=hi){ row.map=(lo+hi)/2; row.mph=hi; row.mpl=lo; row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5); break; }
+            if(lo<=hi){ row.map=(lo+hi)/2; row.mph=hi; row.mpl=lo; row.mpTimestamp=ce3[i].t; row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5); break; }
           }
         }
         if(ceOtm?.symbol && peOtm?.symbol){
@@ -1315,6 +1319,7 @@ async function cocFastRefresh(){
     renderCocTable();
     const stSt=document.getElementById('cocSt');
     if(stSt) stSt.textContent='🔄 Live · last LTP update '+new Date().toTimeString().slice(0,8);
+    if(cocChartState.strike!=null && document.getElementById('cocChartModal').classList.contains('show')) cocRedrawCharts();
   }catch(e){ console.warn('COC fast refresh failed:',e.message); }
   cocFastRunning=false;
 }
@@ -1338,7 +1343,7 @@ async function cocSlowRefresh(){
         const n=Math.min(ce3.length,pe3.length);
         for(let i=n-1;i>=0;i--){
           const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
-          if(lo<=hi){ row.map=(lo+hi)/2; row.mph=hi; row.mpl=lo; row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5); break; }
+          if(lo<=hi){ row.map=(lo+hi)/2; row.mph=hi; row.mpl=lo; row.mpTimestamp=ce3[i].t; row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5); break; }
         }
       }catch(e){ console.warn('COC slow refresh failed for',row.strike,e.message); }
     }));
@@ -1421,7 +1426,7 @@ function toggleCocChartLive(){
 }
 function startCocChartLive(){
   if(cocChartState.liveTimer) clearInterval(cocChartState.liveTimer);
-  cocChartState.liveTimer=setInterval(loadCocChart,8000); // refresh candles every 8s while the popup is open
+  cocChartState.liveTimer=setInterval(()=>loadCocChart(true),8000); // refresh candles every 8s while the popup is open — preserves zoom/pan
 }
 
 // Past days (before today) never change, so fetch them once per symbol and
@@ -1438,7 +1443,7 @@ async function getPastCandles(symbol,days){
   return past;
 }
 
-async function loadCocChart(){
+async function loadCocChart(preserveZoom){
   const {ceSymbol,peSymbol,tf,days}=cocChartState;
   if(!ceSymbol||!peSymbol) return;
   const stSt=document.getElementById('cocChartSt');
@@ -1455,9 +1460,11 @@ async function loadCocChart(){
     const ceC=tf===1?ce1m:resampleCandles(ce1m,tf);
     const peC=tf===1?pe1m:resampleCandles(pe1m,tf);
     cocChartCandles.ce=ceC; cocChartCandles.pe=peC;
-    cocHoverTime=null; // fresh data — drop any stale crosshair position
-    drawCandles('cocCeCanvas',ceC,null);
-    drawCandles('cocPeCanvas',peC,null);
+    if(!preserveZoom){
+      cocHoverTime=null; // strike/timeframe/day-range changed — drop stale crosshair
+      cocZoom={startFrac:0,endFrac:1}; // ...and reset zoom to full view
+    }
+    cocRedrawCharts();
     stSt.textContent=tf+'m · '+days+'D · '+ceC.length+' candles · updated '+new Date().toTimeString().slice(0,8);
   }catch(e){
     stSt.textContent='⚠️ '+e.message;
@@ -1471,6 +1478,32 @@ async function loadCocChart(){
 // missed a trade in some minute the other didn't).
 let cocChartCandles={ce:[],pe:[]};
 let cocHoverTime=null;
+// Visible window as a FRACTION of the dataset (0..1), shared between CE & PE —
+// fraction-based (not index-based) so zoom stays in sync even if the two
+// legs end up with slightly different candle counts.
+let cocZoom={startFrac:0,endFrac:1};
+
+function cocClampZoom(){
+  const len=Math.max(cocChartCandles.ce.length,cocChartCandles.pe.length,1);
+  const minSpan=Math.min(1,15/len); // never zoom in past ~15 candles visible
+  let span=cocZoom.endFrac-cocZoom.startFrac;
+  if(span<minSpan){ const c=(cocZoom.startFrac+cocZoom.endFrac)/2; cocZoom.startFrac=c-minSpan/2; cocZoom.endFrac=c+minSpan/2; span=minSpan; }
+  if(cocZoom.startFrac<0){ cocZoom.startFrac=0; cocZoom.endFrac=span; }
+  if(cocZoom.endFrac>1){ cocZoom.endFrac=1; cocZoom.startFrac=1-span; }
+}
+
+function cocZoomBtn(factor){
+  const center=(cocZoom.startFrac+cocZoom.endFrac)/2;
+  const span=Math.min(1,(cocZoom.endFrac-cocZoom.startFrac)/factor);
+  cocZoom.startFrac=center-span/2; cocZoom.endFrac=center+span/2;
+  cocClampZoom();
+  cocRedrawCharts();
+}
+
+function cocZoomReset(){
+  cocZoom={startFrac:0,endFrac:1};
+  cocRedrawCharts();
+}
 
 function cocNearestIdx(candles,t){
   if(!candles || !candles.length || t==null) return null;
@@ -1485,8 +1518,8 @@ function cocNearestIdx(candles,t){
 function cocRedrawCharts(){
   const ceIdx=cocHoverTime!=null?cocNearestIdx(cocChartCandles.ce,cocHoverTime):null;
   const peIdx=cocHoverTime!=null?cocNearestIdx(cocChartCandles.pe,cocHoverTime):null;
-  drawCandles('cocCeCanvas',cocChartCandles.ce,ceIdx);
-  drawCandles('cocPeCanvas',cocChartCandles.pe,peIdx);
+  drawCandles('cocCeCanvas',cocChartCandles.ce,ceIdx,'ce');
+  drawCandles('cocPeCanvas',cocChartCandles.pe,peIdx,'pe');
 }
 
 function cocPointerX(canvas,e){
@@ -1495,16 +1528,21 @@ function cocPointerX(canvas,e){
   return clientX==null?null:clientX-rect.left;
 }
 
+// Single-finger / mouse-drag -> crosshair (maps screen x through the current zoom window)
 function cocOnPointer(e,leg){
   const canvas=document.getElementById(leg==='ce'?'cocCeCanvas':'cocPeCanvas');
   const x=cocPointerX(canvas,e);
   const candles=cocChartCandles[leg];
   if(x==null || !candles || !candles.length) return;
   e.preventDefault();
-  const padX=4;
-  const cw=(canvas.clientWidth-padX*2)/candles.length;
-  let idx=Math.floor((x-padX)/cw);
-  if(idx<0) idx=0; if(idx>candles.length-1) idx=candles.length-1;
+  const len=candles.length;
+  const vs=Math.max(0,Math.floor(cocZoom.startFrac*len)), ve=Math.min(len,Math.ceil(cocZoom.endFrac*len));
+  const visCount=Math.max(1,ve-vs);
+  const padX=4, padRight=38;
+  const cw=(canvas.clientWidth-padRight-padX)/visCount;
+  let relIdx=Math.floor((x-padX)/cw);
+  if(relIdx<0) relIdx=0; if(relIdx>visCount-1) relIdx=visCount-1;
+  const idx=vs+relIdx;
   cocHoverTime=candles[idx].t;
   cocRedrawCharts();
 }
@@ -1514,23 +1552,85 @@ function cocClearHover(){
   cocRedrawCharts();
 }
 
+function cocTouchDist(t0,t1){
+  const dx=t0.clientX-t1.clientX, dy=t0.clientY-t1.clientY;
+  return Math.sqrt(dx*dx+dy*dy);
+}
+
+let cocPinch={active:false,startDist:0,startFrac:0,endFrac:1};
+
+function cocOnTouchStart(e){
+  if(e.touches.length===2){
+    e.preventDefault();
+    cocPinch.active=true;
+    cocPinch.startDist=cocTouchDist(e.touches[0],e.touches[1]);
+    cocPinch.startFrac=cocZoom.startFrac;
+    cocPinch.endFrac=cocZoom.endFrac;
+  }
+}
+
+function cocOnTouchMove(e,leg){
+  if(e.touches.length===2){
+    e.preventDefault();
+    if(!cocPinch.active) return;
+    const dist=cocTouchDist(e.touches[0],e.touches[1]);
+    const scale=dist/(cocPinch.startDist||1); // fingers spreading apart => scale>1 => zoom in
+    const center=(cocPinch.startFrac+cocPinch.endFrac)/2;
+    const span=Math.min(1,(cocPinch.endFrac-cocPinch.startFrac)/scale);
+    cocZoom.startFrac=center-span/2; cocZoom.endFrac=center+span/2;
+    cocClampZoom();
+    cocRedrawCharts();
+  }else if(e.touches.length===1 && !cocPinch.active){
+    cocOnPointer(e,leg);
+  }
+}
+
+function cocOnTouchEnd(e){
+  if(e.touches.length<2) cocPinch.active=false;
+  if(e.touches.length===0) cocClearHover();
+}
+
+// Desktop bonus: mouse wheel zoom, centered on the cursor position
+function cocOnWheel(e,leg){
+  e.preventDefault();
+  const canvas=document.getElementById(leg==='ce'?'cocCeCanvas':'cocPeCanvas');
+  const x=cocPointerX(canvas,e);
+  const candles=cocChartCandles[leg];
+  if(x==null || !candles || !candles.length) return;
+  const cursorFrac=cocZoom.startFrac+((x-4)/(canvas.clientWidth-38-4))*(cocZoom.endFrac-cocZoom.startFrac);
+  const factor=e.deltaY<0?1.15:1/1.15;
+  const span=Math.min(1,(cocZoom.endFrac-cocZoom.startFrac)/factor);
+  cocZoom.startFrac=cursorFrac-span*((cursorFrac-cocZoom.startFrac)/(cocZoom.endFrac-cocZoom.startFrac));
+  cocZoom.endFrac=cocZoom.startFrac+span;
+  cocClampZoom();
+  cocRedrawCharts();
+}
+
 function initCocCrosshair(){
   ['cocCeCanvas','cocPeCanvas'].forEach(id=>{
     const canvas=document.getElementById(id); if(!canvas) return;
     const leg=id==='cocCeCanvas'?'ce':'pe';
     canvas.style.touchAction='none';
-    canvas.addEventListener('pointerdown',e=>cocOnPointer(e,leg));
-    canvas.addEventListener('pointermove',e=>{ if(e.buttons||e.pointerType==='touch') cocOnPointer(e,leg); });
-    canvas.addEventListener('pointerup',cocClearHover);
-    canvas.addEventListener('pointerleave',cocClearHover);
-    canvas.addEventListener('pointercancel',cocClearHover);
+    // Mouse (desktop): drag to crosshair, wheel to zoom
+    canvas.addEventListener('pointerdown',e=>{ if(e.pointerType==='mouse') cocOnPointer(e,leg); });
+    canvas.addEventListener('pointermove',e=>{ if(e.pointerType==='mouse' && e.buttons) cocOnPointer(e,leg); });
+    canvas.addEventListener('pointerup',e=>{ if(e.pointerType==='mouse') cocClearHover(); });
+    canvas.addEventListener('pointerleave',e=>{ if(e.pointerType==='mouse') cocClearHover(); });
+    canvas.addEventListener('wheel',e=>cocOnWheel(e,leg),{passive:false});
+    // Touch (mobile): 1 finger = crosshair, 2 fingers = pinch-zoom
+    canvas.addEventListener('touchstart',e=>cocOnTouchStart(e),{passive:false});
+    canvas.addEventListener('touchmove',e=>cocOnTouchMove(e,leg),{passive:false});
+    canvas.addEventListener('touchend',cocOnTouchEnd);
+    canvas.addEventListener('touchcancel',cocOnTouchEnd);
   });
 }
 
 // Minimal dependency-free candlestick renderer (no charting library needed —
 // keeps the app self-contained, nothing that can fail to load from a CDN).
-// hoverIdx (optional): draws a crosshair + OHLC/time readout at that candle.
-function drawCandles(canvasId,candles,hoverIdx){
+// hoverIdx (optional, index into the FULL candles array): draws a crosshair
+// + OHLC/time readout if that candle is inside the current zoom window.
+// leg ('ce'|'pe'): looks up that leg's live LTP / SNI / MPH-MPL from cocData.
+function drawCandles(canvasId,candlesFull,hoverIdx,leg){
   const canvas=document.getElementById(canvasId);
   if(!canvas) return;
   const dpr=window.devicePixelRatio||1;
@@ -1539,16 +1639,51 @@ function drawCandles(canvasId,candles,hoverIdx){
   const ctx=canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
-  if(!candles || !candles.length){
+  if(!candlesFull || !candlesFull.length){
     ctx.fillStyle='#666'; ctx.font='11px sans-serif'; ctx.textAlign='center';
     ctx.fillText('No candle data yet', w/2, h/2);
     return;
   }
-  const padX=4, padTop=4, padBottom=14; // padBottom reserves room for the time axis
-  const hi=Math.max(...candles.map(c=>c.h)), lo=Math.min(...candles.map(c=>c.l));
+  const row=cocData.find(r=>r.strike===cocChartState.strike)||{};
+  const liveLtp=leg==='ce'?row.ceLtp:row.peLtp;
+  const sni=row.sni;
+  const mph=row.mph, mpl=row.mpl, mpTs=row.mpTimestamp;
+  const liveColor=leg==='ce'?'#3b82f6':'#f59e0b';
+
+  const len=candlesFull.length;
+  const vs=Math.max(0,Math.floor(cocZoom.startFrac*len)), ve=Math.min(len,Math.max(vs+1,Math.ceil(cocZoom.endFrac*len)));
+  const candles=candlesFull.slice(vs,ve);
+  const padX=4, padTop=4, padBottom=14, padRight=38; // padRight reserves room for the y-axis price scale
+  let hi=Math.max(...candles.map(c=>c.h)), lo=Math.min(...candles.map(c=>c.l));
+  // Auto-scale to fit the live price / SNI / MPH-MPL too, so nothing sits off-chart
+  [liveLtp,sni,mph,mpl].forEach(v=>{ if(v!=null){ hi=Math.max(hi,v); lo=Math.min(lo,v); } });
+  const pad10=(hi-lo)*0.06||1;
+  hi+=pad10; lo-=pad10;
   const range=(hi-lo)||1;
-  const cw=(w-padX*2)/candles.length;
+  const cw=(w-padRight-padX)/candles.length;
   const yOf=v=>h-padBottom-((v-lo)/range)*(h-padTop-padBottom);
+
+  // MPH-MPL highlight band — from the MAP candle through to today's last
+  // candle (today is always appended last in the dataset, so len-1 is it).
+  // Only drawn when today's end is actually within the current zoom view.
+  if(mph!=null && mpl!=null && mpTs!=null && ve>=len){
+    const mpIdxFull=cocNearestIdx(candlesFull,mpTs);
+    if(mpIdxFull!=null){
+      const startRel=Math.max(0,mpIdxFull-vs);
+      const startX=padX+startRel*cw;
+      const endX=w-padRight;
+      if(endX>startX){
+        ctx.fillStyle='rgba(245,166,35,.10)';
+        ctx.fillRect(startX,yOf(mph),endX-startX,Math.max(1,yOf(mpl)-yOf(mph)));
+        ctx.strokeStyle='rgba(245,166,35,.55)'; ctx.lineWidth=1; ctx.setLineDash([2,2]);
+        ctx.beginPath(); ctx.moveTo(startX,yOf(mph)); ctx.lineTo(endX,yOf(mph)); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(startX,yOf(mpl)); ctx.lineTo(endX,yOf(mpl)); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Candles (drawn on top of the highlight band)
   candles.forEach((c,i)=>{
     const x=padX+i*cw+cw/2;
     const up=c.c>=c.o;
@@ -1559,28 +1694,65 @@ function drawCandles(canvasId,candles,hoverIdx){
     const yO=yOf(c.o), yC=yOf(c.c);
     ctx.fillRect(x-bw/2, Math.min(yO,yC), bw, Math.max(1,Math.abs(yC-yO)));
   });
+
+  // Y-axis price scale — 4 evenly spaced gridlines + labels on the right
+  ctx.font='9px sans-serif'; ctx.textAlign='left';
+  for(let g=0;g<=3;g++){
+    const v=lo+range*(g/3);
+    const y=yOf(v);
+    ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padX,y); ctx.lineTo(w-padRight,y); ctx.stroke();
+    ctx.fillStyle='#7a7f95'; ctx.fillText('₹'+v.toFixed(1), w-padRight+3, y+3);
+  }
+
+  // SNI reference line (fixed for the day — one-strike-OTM CE+PE PDC average)
+  if(sni!=null){
+    const y=yOf(sni);
+    ctx.strokeStyle='#a855f7'; ctx.lineWidth=1; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(padX,y); ctx.lineTo(w-padRight,y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle='#a855f7'; ctx.font='9px sans-serif'; ctx.textAlign='left';
+    ctx.fillText('SNI '+sni.toFixed(1), padX+2, y-2);
+  }
+
+  // Live price line + on-chart readout
+  if(liveLtp!=null){
+    const y=yOf(liveLtp);
+    ctx.strokeStyle=liveColor; ctx.lineWidth=1; ctx.setLineDash([1,2]);
+    ctx.beginPath(); ctx.moveTo(padX,y); ctx.lineTo(w-padRight,y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle=liveColor; ctx.fillRect(w-padRight,y-6,padRight,12);
+    ctx.fillStyle='#0a0e1a'; ctx.font='9px sans-serif'; ctx.textAlign='left';
+    ctx.fillText(parseFloat(liveLtp).toFixed(1), w-padRight+2, y+3);
+    const tag=(leg==='ce'?'CE Live ₹':'PE Live ₹')+parseFloat(liveLtp).toFixed(1);
+    ctx.fillStyle=liveColor; ctx.font='bold 10px sans-serif'; ctx.textAlign='left';
+    ctx.fillText(tag, padX+2, 11);
+  }
+
   // Time axis — a handful of evenly spaced labels, not one per candle
   const labelEvery=Math.max(1,Math.ceil(candles.length/6));
   ctx.font='9px sans-serif'; ctx.fillStyle='#7a7f95'; ctx.textAlign='center';
   candles.forEach((c,i)=>{
     if(i%labelEvery===0 || i===candles.length-1){
       const x=padX+i*cw+cw/2;
-      ctx.fillText(new Date(c.t*1000).toTimeString().slice(0,5), Math.min(Math.max(x,14),w-14), h-2);
+      ctx.fillText(new Date(c.t*1000).toTimeString().slice(0,5), Math.min(Math.max(x,14),w-padRight-14), h-2);
     }
   });
-  // Crosshair + OHLC readout
-  if(hoverIdx!=null && candles[hoverIdx]){
-    const c=candles[hoverIdx];
-    const x=padX+hoverIdx*cw+cw/2;
+
+  // Crosshair + OHLC readout — only if the hovered candle is inside the current zoom window
+  const relHover=(hoverIdx!=null && hoverIdx>=vs && hoverIdx<ve)?hoverIdx-vs:null;
+  if(relHover!=null && candles[relHover]){
+    const c=candles[relHover];
+    const x=padX+relHover*cw+cw/2;
     ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
     ctx.beginPath(); ctx.moveTo(x,padTop); ctx.lineTo(x,h-padBottom); ctx.stroke();
     ctx.setLineDash([]);
     const label=new Date(c.t*1000).toTimeString().slice(0,5)+'  O'+c.o.toFixed(1)+' H'+c.h.toFixed(1)+' L'+c.l.toFixed(1)+' C'+c.c.toFixed(1);
     ctx.font='9px sans-serif';
     const tw=ctx.measureText(label).width;
-    const bx=Math.min(Math.max(x-tw/2-4,2),w-tw-10);
-    ctx.fillStyle='rgba(0,0,0,.75)'; ctx.fillRect(bx,2,tw+8,13);
-    ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.fillText(label,bx+4,11);
+    const bx=Math.min(Math.max(x-tw/2-4,2),w-padRight-tw-10);
+    ctx.fillStyle='rgba(0,0,0,.75)'; ctx.fillRect(bx,15,tw+8,13);
+    ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.fillText(label,bx+4,24);
   }
 }
 
