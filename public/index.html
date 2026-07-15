@@ -569,7 +569,12 @@ canvas.mc{width:100%;height:58px}
       <button onclick="cocZoomBtn(1.4)" class="coc-days-btn" title="Zoom in">🔍＋</button>
       <button onclick="cocZoomBtn(1/1.4)" class="coc-days-btn" title="Zoom out">🔍－</button>
       <button onclick="cocZoomReset()" class="coc-days-btn" title="Reset zoom">⤢</button>
-      <span style="font-size:9px;color:var(--text3);margin-left:4px" id="cocChartSt">Loading…</span>
+    </div>
+    <div style="display:flex;gap:3px;margin-top:4px;align-items:center">
+      <button onclick="cocPan(-1)" class="coc-days-btn" title="Scroll to earlier candles">◀ Past</button>
+      <button onclick="cocPan(1)" class="coc-days-btn" title="Scroll toward later candles">Future ▶</button>
+      <button onclick="cocPanNow()" class="coc-days-btn" title="Jump to the latest candle" style="border-color:var(--amber);color:var(--amber)">⏵ Now</button>
+      <span style="font-size:9px;color:var(--text3);margin-left:6px" id="cocChartSt">Loading…</span>
     </div>
   </div>
   <div style="padding:6px 10px;flex:1;min-height:0;display:flex;flex-direction:column">
@@ -1557,15 +1562,17 @@ function cocTouchDist(t0,t1){
   return Math.sqrt(dx*dx+dy*dy);
 }
 
-let cocPinch={active:false,startDist:0,startFrac:0,endFrac:1};
+let cocPinch={active:false,startDist:0,startFrac:0,endFrac:1,startMidX:0,canvas:null};
 
-function cocOnTouchStart(e){
+function cocOnTouchStart(e,leg){
   if(e.touches.length===2){
     e.preventDefault();
     cocPinch.active=true;
     cocPinch.startDist=cocTouchDist(e.touches[0],e.touches[1]);
     cocPinch.startFrac=cocZoom.startFrac;
     cocPinch.endFrac=cocZoom.endFrac;
+    cocPinch.startMidX=(e.touches[0].clientX+e.touches[1].clientX)/2;
+    cocPinch.canvas=document.getElementById(leg==='ce'?'cocCeCanvas':'cocPeCanvas');
   }
 }
 
@@ -1575,9 +1582,16 @@ function cocOnTouchMove(e,leg){
     if(!cocPinch.active) return;
     const dist=cocTouchDist(e.touches[0],e.touches[1]);
     const scale=dist/(cocPinch.startDist||1); // fingers spreading apart => scale>1 => zoom in
-    const center=(cocPinch.startFrac+cocPinch.endFrac)/2;
-    const span=Math.min(1,(cocPinch.endFrac-cocPinch.startFrac)/scale);
-    cocZoom.startFrac=center-span/2; cocZoom.endFrac=center+span/2;
+    const span0=cocPinch.endFrac-cocPinch.startFrac;
+    const newSpan=Math.min(1,span0/scale);
+    // two-finger drag (midpoint moving) pans the view — drag right to reveal earlier candles
+    const midX=(e.touches[0].clientX+e.touches[1].clientX)/2;
+    const canvas=cocPinch.canvas;
+    const padX=4, padRight=38;
+    const plotW=Math.max(1,canvas.clientWidth-padRight-padX);
+    const dxFrac=-((midX-cocPinch.startMidX)/plotW)*span0;
+    const center=(cocPinch.startFrac+cocPinch.endFrac)/2+dxFrac;
+    cocZoom.startFrac=center-newSpan/2; cocZoom.endFrac=center+newSpan/2;
     cocClampZoom();
     cocRedrawCharts();
   }else if(e.touches.length===1 && !cocPinch.active){
@@ -1588,6 +1602,23 @@ function cocOnTouchMove(e,leg){
 function cocOnTouchEnd(e){
   if(e.touches.length<2) cocPinch.active=false;
   if(e.touches.length===0) cocClearHover();
+}
+
+// Pan buttons — shift the current zoom window left/right by a third of its
+// own span, or jump straight to the latest (rightmost/"now") candle.
+function cocPan(dir){
+  const span=cocZoom.endFrac-cocZoom.startFrac;
+  const shift=dir*span*0.35;
+  cocZoom.startFrac+=shift; cocZoom.endFrac+=shift;
+  cocClampZoom();
+  cocRedrawCharts();
+}
+
+function cocPanNow(){
+  const span=cocZoom.endFrac-cocZoom.startFrac;
+  cocZoom.endFrac=1; cocZoom.startFrac=1-span;
+  cocClampZoom();
+  cocRedrawCharts();
 }
 
 // Desktop bonus: mouse wheel zoom, centered on the cursor position
@@ -1618,7 +1649,7 @@ function initCocCrosshair(){
     canvas.addEventListener('pointerleave',e=>{ if(e.pointerType==='mouse') cocClearHover(); });
     canvas.addEventListener('wheel',e=>cocOnWheel(e,leg),{passive:false});
     // Touch (mobile): 1 finger = crosshair, 2 fingers = pinch-zoom
-    canvas.addEventListener('touchstart',e=>cocOnTouchStart(e),{passive:false});
+    canvas.addEventListener('touchstart',e=>cocOnTouchStart(e,leg),{passive:false});
     canvas.addEventListener('touchmove',e=>cocOnTouchMove(e,leg),{passive:false});
     canvas.addEventListener('touchend',cocOnTouchEnd);
     canvas.addEventListener('touchcancel',cocOnTouchEnd);
