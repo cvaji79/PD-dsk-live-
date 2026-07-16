@@ -68,7 +68,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--f
 .wl-ch{font-size:10px;text-align:right;margin-top:1px}
 /* BADGES */
 .badge{font-size:9px;padding:1px 5px;border-radius:4px;margin-left:3px;font-weight:700;vertical-align:middle}
-.b-eq{background:#1e3a5f;color:var(--blue)}.b-fut{background:var(--amber-bg);color:var(--amber)}
+.b-eq{background:#1e3a5f;color:var(--blue)}.b-index{background:#1e3a5f;color:var(--blue)}.b-fut{background:var(--amber-bg);color:var(--amber)}
 .b-opt{background:var(--purple-bg);color:var(--purple)}.b-mis{background:#052e16;color:var(--green)}
 .b-nrml{background:#1c1a04;color:var(--amber)}
 /* ORDER FORM */
@@ -210,7 +210,6 @@ canvas.mc{width:100%;height:58px}
       <div class="met"><div class="ml">Capital</div><div class="mv" id="capitalVal">₹2,00,000</div><div class="ms">Available</div></div>
       <div class="met"><div class="ml">Positions</div><div class="mv" id="openPosCount">0</div><div class="ms">Open</div></div>
     </div>
-    <div class="card"><div class="card-title">P&L Chart</div><div class="chart-wrap"><canvas id="pnlChart" class="mc"></canvas></div></div>
     <div class="card">
       <div class="card-title">Watchlist <span onclick="openModal('wlModal')" style="float:right;color:var(--blue);font-size:11px;cursor:pointer;font-weight:700">+ Add</span></div>
       <div id="wlDiv"></div>
@@ -347,28 +346,6 @@ canvas.mc{width:100%;height:58px}
       <div id="breadthSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Needs Fyers login. Scans the full F&O list — can take 1-2 minutes.</div>
       <div id="breadthTableWrap"></div>
     </div>
-
-    <div class="card" style="padding:9px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
-        <div style="font-size:13px;font-weight:700;color:var(--blue)">📈 Nifty OI Tracker</div>
-        <div style="font-size:10px;color:var(--text3)" id="oiSpot">NIFTY: —</div>
-      </div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;align-items:center">
-        <button class="tf-btn active" onclick="setTf(1,this)">1M</button>
-        <button class="tf-btn" onclick="setTf(3,this)">3M</button>
-        <button class="tf-btn" onclick="setTf(5,this)">5M</button>
-        <button class="tf-btn" onclick="setTf(15,this)">15M</button>
-        <button onclick="oiRefresh()" style="padding:5px 10px;border-radius:6px;border:none;background:var(--green-dim);color:var(--green);font-size:10px;font-weight:700;cursor:pointer">⟳ Refresh</button>
-        <span style="font-size:9px;color:var(--text3);margin-left:auto" id="oiTimer">—</span>
-      </div>
-      <div id="oiSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Tap Refresh or login Fyers for live data</div>
-      <div class="oi-wrap">
-        <table class="oi-tbl">
-          <thead><tr><th>Time</th><th>Spot</th><th>CE OI Δ</th><th>PE OI Δ</th><th>Diff OI</th><th>Diff%</th><th>Dir</th><th>Sentiment</th></tr></thead>
-          <tbody id="oiBody"><tr><td colspan="8" style="padding:18px;color:var(--text3)">No data yet</td></tr></tbody>
-        </table>
-      </div>
-    </div>
   </div>
 
   <!-- HISTORY TAB -->
@@ -420,7 +397,7 @@ canvas.mc{width:100%;height:58px}
   <button class="nb active" onclick="switchTab('dashboard',this)" id="nav-dashboard"><span class="ni">📊</span>Dashboard</button>
   <button class="nb" onclick="switchTab('order',this)" id="nav-order"><span class="ni">📝</span>Order</button>
   <button class="nb" onclick="switchTab('coc',this)" id="nav-coc"><span class="ni">🎯</span>COC</button>
-  <button class="nb" onclick="switchTab('oi',this);startOiTimer()" id="nav-oi"><span class="ni">📈</span>OI Track</button>
+  <button class="nb" onclick="switchTab('oi',this)" id="nav-oi"><span class="ni">📈</span>OI Track</button>
   <button class="nb" onclick="switchTab('hist',this)" id="nav-hist"><span class="ni">📅</span>History</button>
   <button class="nb" onclick="switchTab('port',this)" id="nav-port"><span class="ni">💼</span>Portfolio</button>
 </div>
@@ -495,8 +472,8 @@ canvas.mc{width:100%;height:58px}
     <div style="font-size:15px;font-weight:700">Add to Watchlist</div>
     <button onclick="closeModal('wlModal')" style="background:none;border:none;color:var(--text2);font-size:20px;cursor:pointer">✕</button>
   </div>
-  <div class="field" style="margin-bottom:9px"><label>Symbol</label><input id="wlSym" placeholder="e.g. TATAMOTORS" list="wlL"/><datalist id="wlL"><option value="RELIANCE"/><option value="TCS"/><option value="INFY"/><option value="HDFCBANK"/><option value="NIFTY"/><option value="BANKNIFTY"/><option value="FINNIFTY"/></datalist></div>
-  <div class="field" style="margin-bottom:13px"><label>Segment</label><select id="wlSeg"><option value="EQ">EQ — Equity</option><option value="FUT">FUT — Futures</option><option value="OPT">OPT — Options</option></select></div>
+  <div class="field" style="margin-bottom:9px"><label>Symbol</label><input id="wlSym" placeholder="e.g. TATAMOTORS" list="wlL" oninput="onWlSymInput()"/><datalist id="wlL"><option value="RELIANCE"/><option value="TCS"/><option value="INFY"/><option value="HDFCBANK"/><option value="NIFTY"/><option value="BANKNIFTY"/><option value="FINNIFTY"/><option value="SENSEX"/><option value="MIDCPNIFTY"/><option value="BANKEX"/></datalist></div>
+  <div class="field" style="margin-bottom:13px"><label>Segment</label><select id="wlSeg"><option value="EQ">EQ — Equity</option><option value="INDEX">INDEX — Index</option><option value="FUT">FUT — Futures</option><option value="OPT">OPT — Options</option></select></div>
   <button onclick="addWl()" style="width:100%;padding:10px;border-radius:8px;border:none;background:var(--blue);color:#fff;font-size:14px;font-weight:700;cursor:pointer">Add</button>
 </div>
 </div>
@@ -699,7 +676,7 @@ if(!ST.wl||!ST.wl.length){
 document.getElementById('sCap').value=ST.capital;
 document.getElementById('sTok').value=ST.fyToken||'';
 
-renderAll(); drawChart(); updLoginBtn(); initCocCrosshair();
+renderAll(); updLoginBtn(); initCocCrosshair();
 if(ST.fyToken) startLiveFeed();
 
 // ================================================================
@@ -972,60 +949,6 @@ function renderBreadthTable(){
   `;
 }
 
-let oiTf=5, oiRows=[], oiTmr=null, oiCd=30;
-
-function setTf(tf,btn){
-  oiTf=tf;
-  document.querySelectorAll('.tf-btn').forEach(b=>b.classList.remove('active'));
-  btn.classList.add('active'); oiRefresh();
-}
-function oiRefresh(){
-  document.getElementById('oiSt').textContent='Loading…';
-  if(ST.fyToken) loadOILive();
-  else{
-    document.getElementById('oiSpot').textContent='🔒 Login to Fyers for live OI data';
-    document.getElementById('oiSt').textContent='Not connected';
-    oiRows=[]; renderOI();
-  }
-}
-function startOiTimer(){
-  if(oiTmr) clearInterval(oiTmr);
-  oiCd=30;
-  oiTmr=setInterval(()=>{
-    oiCd--;
-    document.getElementById('oiTimer').textContent='Next: '+Math.max(oiCd,0)+'s';
-    if(oiCd<=0){ oiCd=30; oiRefresh(); }
-  },1000);
-  oiRefresh();
-}
-
-async function loadOILive(){
-  try{
-    const auth=FYERS_APP_ID+':'+ST.fyToken;
-    const r=await fetch('/api/optionchain?symbol=NSE:NIFTY50-INDEX&strikecount=10',{headers:{'Authorization':auth}});
-    const d=await r.json();
-    if(d.s==='error') throw new Error(d.message||'API error');
-    const chain=d.data||{};
-    const spot=(chain.optionsChain?.[0]?.ltp)||24000;
-    document.getElementById('oiSpot').textContent='NIFTY: '+spot.toLocaleString('en-IN');
-    const ceI=(chain.optionsChain||[]).filter(x=>fyOptType(x)==='CE').slice(0,8);
-    const peI=(chain.optionsChain||[]).filter(x=>fyOptType(x)==='PE').slice(0,8);
-    const ceC=ceI.reduce((s,x)=>s+(x.oi_change||0),0);
-    const peC=peI.reduce((s,x)=>s+(x.oi_change||0),0);
-    const diff=ceC-peC;
-    const dp=peC?((diff/Math.abs(peC))*100):0;
-    const t=new Date().toTimeString().slice(0,8);
-    oiRows.push({t,spot:spot.toFixed(2),ceC,peC,diff,dp:dp.toFixed(1),dir:diff<0?'UP':'DOWN',sent:diff<0?'Bullish':diff>0?'Bearish':'Neutral'});
-    if(oiRows.length>40) oiRows.shift();
-    renderOI();
-    document.getElementById('oiSt').textContent='Live ✓ ATM:'+(Math.round(spot/50)*50)+' '+t;
-  }catch(e){
-    document.getElementById('oiSt').textContent='⚠️ '+e.message;
-    document.getElementById('oiSt').style.color='var(--red)';
-    console.error('OI live fetch failed:',e);
-  }
-}
-
 function fmtN(n){
   const ng=n<0; const v=Math.abs(Math.round(n));
   let s=v.toString(),r;
@@ -1034,25 +957,6 @@ function fmtN(n){
   else if(s.length<=7) r=s.slice(0,-5)+','+s.slice(-5,-3)+','+s.slice(-3);
   else r=s.slice(0,-7)+','+s.slice(-7,-5)+','+s.slice(-5,-3)+','+s.slice(-3);
   return (ng?'-':'')+r;
-}
-
-function renderOI(){
-  const rows=[...oiRows].reverse();
-  const tb=document.getElementById('oiBody');
-  if(!rows.length){tb.innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--text3)">No data</td></tr>';return;}
-  tb.innerHTML=rows.map(r=>{
-    const dn=parseInt(r.diff)<0;const dpn=parseFloat(r.dp)<0;
-    return `<tr>
-      <td style="color:var(--text3)">${r.t.slice(0,5)}</td>
-      <td style="font-weight:600">${r.spot}</td>
-      <td class="bull">${fmtN(r.ceC)}</td>
-      <td class="bear">${fmtN(r.peC)}</td>
-      <td style="font-weight:700;color:${dn?'var(--green)':'var(--red)'}">${fmtN(r.diff)}</td>
-      <td style="font-weight:700;color:${dpn?'var(--green)':'var(--red)'}">${r.dp}%</td>
-      <td><span class="dir-b ${r.dir==='UP'?'du':'dd'}">${r.dir==='UP'?'▲ UP':'▼ DN'}</span></td>
-      <td style="font-weight:700;color:${r.sent==='Bullish'?'var(--green)':r.sent==='Bearish'?'var(--red)':'var(--text3)'}">${r.sent}</td>
-    </tr>`;
-  }).join('');
 }
 
 // ================================================================
@@ -2183,7 +2087,7 @@ function openEdit(id){
 }
 
 function updEditVals(p){
-  const ltp=ST.prices[p.sym]||p.ltp;
+  const ltp=p.ltp||ST.prices[p.sym];
   const m=p.bs==='BUY'?1:-1;
   const pnl=m*(ltp-p.avgP)*p.qty;
   document.getElementById('editVals').innerHTML=
@@ -2202,7 +2106,7 @@ function saveEdit(field,action){
   else{
     const val=parseFloat(document.getElementById(idMap[field]).value);
     if(isNaN(val)||val<0){ showToast('Enter valid value'); return; }
-    p[field]=val; if(field==='tsl') p.tslHW=ST.prices[p.sym]||p.ltp;
+    p[field]=val; if(field==='tsl') p.tslHW=p.ltp||ST.prices[p.sym];
   }
   save(); updEditVals(p); renderPositions();
   const labels={target:'🎯 Target',sl:'🛑 Stoploss',tsl:'📉 TSL'};
@@ -2216,7 +2120,7 @@ function closePos(id){
   const p=ST.pos.find(x=>x.id===id);
   if(!p||p.closing) return;
   if(p.live){ p.closing=true; save(); renderAll(); closeLivePos(p); return; }
-  const exitP=ST.prices[p.sym]||p.ltp;
+  const exitP=p.ltp||ST.prices[p.sym];
   const pnl=(p.bs==='BUY'?1:-1)*(exitP-p.avgP)*p.qty;
   ST.hist.unshift({id:Date.now(),symbol:p.symbol,sym:p.sym,seg:p.seg,bs:p.bs,qty:p.qty,lots:p.lots,lotSize:p.lotSize,prod:p.prod,entryP:p.avgP,exitP,pnl,live:false,date:new Date().toLocaleDateString('en-IN'),time:new Date().toISOString()});
   const cut=new Date(); cut.setDate(cut.getDate()-30);
@@ -2239,7 +2143,7 @@ async function closeLivePos(p){
       p.closing=false; save(); renderAll();
       return;
     }
-    const exitP=ST.prices[p.sym]||p.ltp;
+    const exitP=p.ltp||ST.prices[p.sym];
     const pnl=(p.bs==='BUY'?1:-1)*(exitP-p.avgP)*p.qty;
     ST.hist.unshift({id:Date.now(),symbol:p.symbol,sym:p.sym,seg:p.seg,bs:p.bs,qty:p.qty,lots:p.lots,lotSize:p.lotSize,prod:p.prod,entryP:p.avgP,exitP,pnl,live:true,date:new Date().toLocaleDateString('en-IN'),time:new Date().toISOString()});
     const cut=new Date(); cut.setDate(cut.getDate()-30);
@@ -2259,7 +2163,7 @@ async function closeLivePos(p){
 function checkSLTgt(){
   [...ST.pos].forEach(p=>{
     if(p.closing) return;
-    const ltp=ST.prices[p.sym]||p.ltp;
+    const ltp=p.ltp||ST.prices[p.sym];
     const m=p.bs==='BUY'?1:-1;
     // Trailing SL
     if(p.tsl&&p.tsl>0){
@@ -2309,6 +2213,10 @@ function setMode(m){
 // ================================================================
 // WATCHLIST
 // ================================================================
+function onWlSymInput(){
+  const sym=document.getElementById('wlSym').value.trim().toUpperCase();
+  if(COC_IDX[sym]) document.getElementById('wlSeg').value='INDEX';
+}
 function addWl(){
   const sym=document.getElementById('wlSym').value.trim().toUpperCase();
   const seg=document.getElementById('wlSeg').value;
@@ -2335,7 +2243,7 @@ function renderAll(){ renderWatchlist(); renderPositions(); renderOrders(); rend
 function renderWatchlist(){
   const d=document.getElementById('wlDiv');
   if(!ST.wl.length){ d.innerHTML='<div class="empty"><div class="empty-i">👁️</div><div class="empty-t">Empty — tap + Add</div></div>'; return; }
-  d.innerHTML=ST.wl.map(w=>`<div class="wl-row" onclick="prefillOrder('${w.sym}','${w.seg}')"><div style="flex:1"><div class="wl-nm">${w.sym}<span class="badge b-${w.seg.toLowerCase()}">${w.seg}</span></div><div class="wl-sg">${w.seg==='EQ'?'NSE':'NFO'} <span onclick="event.stopPropagation();rmWl('${w.sym}','${w.seg}')" style="cursor:pointer;color:var(--text3);margin-left:5px">✕</span></div></div><div><div class="wl-pr">₹${(w.ltp||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</div><div class="wl-ch ${(w.chg||0)>=0?'up':'dn'}">${(w.chg||0)>=0?'+':''}${(w.chg||0).toFixed(2)}%</div></div></div>`).join('');
+  d.innerHTML=ST.wl.map(w=>{const exch=w.seg==='EQ'?'NSE':w.seg==='INDEX'?(COC_IDX[w.sym]||'').split(':')[0]||'NSE':'NFO';return `<div class="wl-row" onclick="prefillOrder('${w.sym}','${w.seg}')"><div style="flex:1"><div class="wl-nm">${w.sym}<span class="badge b-${w.seg.toLowerCase()}">${w.seg}</span></div><div class="wl-sg">${exch} <span onclick="event.stopPropagation();rmWl('${w.sym}','${w.seg}')" style="cursor:pointer;color:var(--text3);margin-left:5px">✕</span></div></div><div><div class="wl-pr">₹${(w.ltp||0).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</div><div class="wl-ch ${(w.chg||0)>=0?'up':'dn'}">${(w.chg||0)>=0?'+':''}${(w.chg||0).toFixed(2)}%</div></div></div>`;}).join('');
 }
 function renderPositions(){
   const d=document.getElementById('posDiv');
@@ -2343,7 +2251,7 @@ function renderPositions(){
   document.getElementById('openPosCount').textContent=pos.length;
   if(!pos.length){ d.innerHTML='<div class="empty"><div class="empty-i">📭</div><div class="empty-t">No open positions</div></div>'; return; }
   d.innerHTML=pos.map(p=>{
-    const ltp=ST.prices[p.sym]||p.ltp;
+    const ltp=p.ltp||ST.prices[p.sym];
     const m=p.bs==='BUY'?1:-1;
     const pnl=m*(ltp-p.avgP)*p.qty;
     const pct=(pnl/(p.avgP*p.qty)*100).toFixed(2);
@@ -2358,7 +2266,7 @@ function updMetrics(){
   let todP=0,allP=0;
   const today=new Date().toLocaleDateString('en-IN');
   hist.forEach(h=>{ allP+=h.pnl; if(h.date===today) todP+=h.pnl; });
-  pos.forEach(p=>{ const ltp=ST.prices[p.sym]||p.ltp; const m=p.bs==='BUY'?1:-1; const pnl=m*(ltp-p.avgP)*p.qty; todP+=pnl; allP+=pnl; });
+  pos.forEach(p=>{ const ltp=p.ltp||ST.prices[p.sym]; const m=p.bs==='BUY'?1:-1; const pnl=m*(ltp-p.avgP)*p.qty; todP+=pnl; allP+=pnl; });
   const te=document.getElementById('todayPnl'); te.textContent=(todP>=0?'+':'-')+fmt(todP); te.style.color=todP>=0?'var(--green)':'var(--red)';
   const ae=document.getElementById('overallPnl'); ae.textContent=(allP>=0?'+':'-')+fmt(allP); ae.style.color=allP>=0?'var(--green)':'var(--red)';
   const capEl=document.getElementById('capitalVal');
@@ -2409,7 +2317,7 @@ function renderPortfolio(){
   const h=ST.pos.filter(p=>(isLive?p.live:!p.live)&&p.prod==='CNC');
   const d=document.getElementById('holdDiv');
   if(!h.length) d.innerHTML='<div class="empty"><div class="empty-i">📦</div><div class="empty-t">No CNC holdings</div></div>';
-  else d.innerHTML=h.map(p=>{ const ltp=ST.prices[p.sym]||p.ltp; const pnl=(ltp-p.avgP)*p.qty*(p.bs==='BUY'?1:-1); return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">${p.symbol}</div><div style="font-size:9px;color:var(--text3)">${p.qty} qty · avg ₹${p.avgP.toFixed(2)}</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:600">₹${(ltp*p.qty).toLocaleString('en-IN',{maximumFractionDigits:0})}</div><div style="font-size:11px;color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':'-'}${fmt(pnl)}</div></div></div>`; }).join('');
+  else d.innerHTML=h.map(p=>{ const ltp=p.ltp||ST.prices[p.sym]; const pnl=(ltp-p.avgP)*p.qty*(p.bs==='BUY'?1:-1); return `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)"><div><div style="font-size:12px;font-weight:600">${p.symbol}</div><div style="font-size:9px;color:var(--text3)">${p.qty} qty · avg ₹${p.avgP.toFixed(2)}</div></div><div style="text-align:right"><div style="font-size:12px;font-weight:600">₹${(ltp*p.qty).toLocaleString('en-IN',{maximumFractionDigits:0})}</div><div style="font-size:11px;color:${pnl>=0?'var(--green)':'var(--red)'}">${pnl>=0?'+':'-'}${fmt(pnl)}</div></div></div>`; }).join('');
   const used=h.reduce((s,p)=>s+p.avgP*p.qty,0);
   const real=ST.hist.filter(hh=>isLive?hh.live:!hh.live).reduce((s,hh)=>s+hh.pnl,0);
   const capBase=isLive?(ST.liveFunds||0):ST.capital;
@@ -2448,7 +2356,7 @@ async function pollLiveQuotes(){
   if(!ST.fyToken) return;
   const idxSymbols=['NSE:NIFTY50-INDEX','NSE:NIFTYBANK-INDEX','NSE:FINNIFTY-INDEX','BSE:SENSEX-INDEX'];
   const posSymbols=ST.pos.map(p=>p.fySymbol).filter(Boolean);
-  const wlSymbols=ST.wl.map(w=>w.seg==='EQ'?('NSE:'+w.sym+'-EQ'):null).filter(Boolean);
+  const wlSymbols=ST.wl.map(w=>w.seg==='EQ'?('NSE:'+w.sym+'-EQ'):w.seg==='INDEX'?COC_IDX[w.sym]:null).filter(Boolean);
   const all=[...new Set([...idxSymbols,...posSymbols,...wlSymbols])].slice(0,50);
   if(!all.length) return;
   try{
@@ -2470,7 +2378,7 @@ async function pollLiveQuotes(){
     document.getElementById('mB').textContent=ST.prices.BANKNIFTY!=null?ST.prices.BANKNIFTY.toLocaleString('en-IN'):'—';
     document.getElementById('mS').textContent=ST.prices.SENSEX!=null?ST.prices.SENSEX.toLocaleString('en-IN'):'—';
     document.getElementById('mF').textContent=ST.prices.FINNIFTY!=null?ST.prices.FINNIFTY.toLocaleString('en-IN'):'—';
-    ST.wl.forEach(w=>{ const k='NSE:'+w.sym+'-EQ'; if(ST.prices[k]!==undefined){ const old=w.ltp||ST.prices[k]; w.ltp=ST.prices[k]; w.chg=parseFloat(((w.ltp/old-1)*100).toFixed(2)); } });
+    ST.wl.forEach(w=>{ const k=w.seg==='EQ'?('NSE:'+w.sym+'-EQ'):w.seg==='INDEX'?COC_IDX[w.sym]:null; if(k&&ST.prices[k]!==undefined){ const old=w.ltp||ST.prices[k]; w.ltp=ST.prices[k]; w.chg=parseFloat(((w.ltp/old-1)*100).toFixed(2)); } });
     ST.pos.forEach(p=>{ if(p.fySymbol&&ST.prices[p.fySymbol]!==undefined) p.ltp=ST.prices[p.fySymbol]; });
     save(); renderWatchlist(); renderPositions(); updMetrics(); checkSLTgt();
     const fs=document.getElementById('feedSt'); fs.style.display='none';
@@ -2547,29 +2455,15 @@ async function fetchFyersOrderbook(){
     console.warn('Orderbook fetch failed:',e.message);
   }
 }
-function drawChart(){
-  const c=document.getElementById('pnlChart'); if(!c) return;
-  const ctx=c.getContext('2d'); c.width=c.offsetWidth*2; c.height=120;
-  let chartD=Array.from({length:30},(_,i)=>({y:Math.sin(i*.4)*500+Math.random()*200}));
-  rC(ctx,c.width,c.height,chartD);
-  setInterval(()=>{ let l=chartD[chartD.length-1].y; chartD.push({y:l+(Math.random()-.45)*150}); if(chartD.length>60) chartD.shift(); rC(ctx,c.width,c.height,chartD); },3000);
-}
-function rC(ctx,w,h,data){
-  ctx.clearRect(0,0,w,h); if(!data.length) return;
-  const mn=Math.min(...data.map(d=>d.y)),mx=Math.max(...data.map(d=>d.y)),rng=mx-mn||1,pad=10;
-  const pts=data.map((d,i)=>({x:pad+(i/(data.length-1))*(w-pad*2),y:h-pad-((d.y-mn)/rng)*(h-pad*2)}));
-  const last=data[data.length-1].y,col=last>=0?'#22c55e':'#ef4444';
-  ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y); pts.slice(1).forEach(p=>ctx.lineTo(p.x,p.y));
-  ctx.strokeStyle=col; ctx.lineWidth=2; ctx.stroke();
-  ctx.lineTo(pts[pts.length-1].x,h); ctx.lineTo(pts[0].x,h); ctx.closePath();
-  const g=ctx.createLinearGradient(0,0,0,h); g.addColorStop(0,last>=0?'rgba(34,197,94,.3)':'rgba(239,68,68,.3)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fill();
-}
 function fmt(n){ return '₹'+Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:0}); }
 function showToast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
 function openModal(id){ document.getElementById(id).classList.add('show'); }
 function closeModal(id){ document.getElementById(id).classList.remove('show'); }
 function prefillOrder(sym,seg){
-  setSeg(seg); switchTab('order',document.getElementById('nav-order'));
+  // Indices aren't directly tradable — you trade their futures/options —
+  // so route an index watchlist tap to the Futures form instead.
+  const orderSeg=seg==='INDEX'?'FUT':seg;
+  setSeg(orderSeg); switchTab('order',document.getElementById('nav-order'));
   document.getElementById('fSym').value=sym;
   if(ST.prices[sym]) document.getElementById('fPrice').value=ST.prices[sym].toFixed(2);
   updateLotDisplay(); updateOrderSummary();
