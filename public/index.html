@@ -190,10 +190,10 @@ canvas.mc{width:100%;height:58px}
     </div>
   </div>
   <div class="mkt-strip">
-    <div class="mkt-it"><span class="mkt-nm">NIFTY</span><span class="mkt-vl up" id="mN">24,416</span></div>
-    <div class="mkt-it"><span class="mkt-nm">BANK</span><span class="mkt-vl dn" id="mB">52,012</span></div>
-    <div class="mkt-it"><span class="mkt-nm">SENSEX</span><span class="mkt-vl up" id="mS">80,576</span></div>
-    <div class="mkt-it"><span class="mkt-nm">FIN</span><span class="mkt-vl up" id="mF">23,870</span></div>
+    <div class="mkt-it"><span class="mkt-nm">NIFTY</span><span class="mkt-vl" id="mN">—</span></div>
+    <div class="mkt-it"><span class="mkt-nm">BANK</span><span class="mkt-vl" id="mB">—</span></div>
+    <div class="mkt-it"><span class="mkt-nm">SENSEX</span><span class="mkt-vl" id="mS">—</span></div>
+    <div class="mkt-it"><span class="mkt-nm">FIN</span><span class="mkt-vl" id="mF">—</span></div>
     <div id="feedSt" style="font-size:10px;color:var(--red);margin-left:auto;display:none"></div>
   </div>
 </div>
@@ -248,7 +248,7 @@ canvas.mc{width:100%;height:58px}
       </div>
       <!-- OPT extras -->
       <div id="optX" class="xtra">
-        <button onclick="openModal('ocModal');loadOC()" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--purple);background:var(--purple-bg);color:var(--purple);font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">
+        <button onclick="openModal('ocModal');loadOC();startOcTimer()" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--purple);background:var(--purple-bg);color:var(--purple);font-size:12px;font-weight:700;cursor:pointer;margin-bottom:8px">
           📊 Open Option Chain → Select Strike
         </button>
         <div id="selStrikeInfo" style="display:none;padding:6px 9px;background:var(--bg);border:1px solid var(--purple);border-radius:7px;font-size:10px;margin-bottom:7px;color:var(--purple)"></div>
@@ -507,7 +507,7 @@ canvas.mc{width:100%;height:58px}
   <div style="padding:12px;background:#120a2e;border-radius:18px 18px 0 0;flex-shrink:0">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:9px">
       <div style="font-size:14px;font-weight:700;color:var(--purple)">📊 Option Chain</div>
-      <button onclick="closeModal('ocModal')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer">✕</button>
+      <button onclick="stopOcTimer();closeModal('ocModal')" style="background:none;border:none;color:var(--text2);font-size:22px;cursor:pointer">✕</button>
     </div>
     <div style="display:flex;gap:7px;flex-wrap:wrap">
       <div style="flex:1;min-width:80px">
@@ -691,17 +691,15 @@ function load(){
 load();
 if(!ST.wl||!ST.wl.length){
   ST.wl=[
-    {sym:'RELIANCE',seg:'EQ',ltp:2845.6,chg:1.24},
-    {sym:'NIFTY',seg:'FUT',ltp:24416,chg:-0.21},
-    {sym:'HDFCBANK',seg:'EQ',ltp:1672.3,chg:0.72},
-    {sym:'BANKNIFTY',seg:'FUT',ltp:52012,chg:-0.38},
+    {sym:'RELIANCE',seg:'EQ',ltp:0,chg:0},
+    {sym:'HDFCBANK',seg:'EQ',ltp:0,chg:0},
   ];
   save();
 }
 document.getElementById('sCap').value=ST.capital;
 document.getElementById('sTok').value=ST.fyToken||'';
 
-renderAll(); simPrices(); drawChart(); updLoginBtn(); initCocCrosshair();
+renderAll(); drawChart(); updLoginBtn(); initCocCrosshair();
 if(ST.fyToken) startLiveFeed();
 
 // ================================================================
@@ -983,7 +981,12 @@ function setTf(tf,btn){
 }
 function oiRefresh(){
   document.getElementById('oiSt').textContent='Loading…';
-  if(ST.fyToken) loadOILive(); else loadOIDemo();
+  if(ST.fyToken) loadOILive();
+  else{
+    document.getElementById('oiSpot').textContent='🔒 Login to Fyers for live OI data';
+    document.getElementById('oiSt').textContent='Not connected';
+    oiRows=[]; renderOI();
+  }
 }
 function startOiTimer(){
   if(oiTmr) clearInterval(oiTmr);
@@ -1017,26 +1020,10 @@ async function loadOILive(){
     renderOI();
     document.getElementById('oiSt').textContent='Live ✓ ATM:'+(Math.round(spot/50)*50)+' '+t;
   }catch(e){
-    document.getElementById('oiSt').textContent='⚠️ '+e.message+' — demo shown';
-    loadOIDemo();
+    document.getElementById('oiSt').textContent='⚠️ '+e.message;
+    document.getElementById('oiSt').style.color='var(--red)';
+    console.error('OI live fetch failed:',e);
   }
-}
-
-function loadOIDemo(){
-  const spot=24416+Math.round((Math.random()-.5)*200);
-  document.getElementById('oiSpot').textContent='NIFTY: '+spot.toLocaleString('en-IN')+' (demo)';
-  oiRows=[];
-  const now=new Date();
-  for(let i=9;i>=0;i--){
-    const t=new Date(now-i*oiTf*60000).toTimeString().slice(0,8);
-    const ce=Math.round((Math.random()-.4)*4000000);
-    const pe=Math.round((Math.random()-.4)*4000000);
-    const d=ce-pe;
-    const dp=pe?((d/Math.abs(pe))*100):0;
-    oiRows.push({t,spot:(spot+Math.round((Math.random()-.5)*100)).toFixed(2),ceC:ce,peC:pe,diff:d,dp:dp.toFixed(1),dir:d<0?'UP':'DOWN',sent:d<0?'Bullish':d>0?'Bearish':'Neutral'});
-  }
-  renderOI();
-  document.getElementById('oiSt').textContent='DEMO MODE — Login Fyers for live data';
 }
 
 function fmtN(n){
@@ -1839,12 +1826,26 @@ function cocPickAndOrder(otype,side){
 // ================================================================
 // OPTION CHAIN
 // ================================================================
+let ocTimer=null;
+function startOcTimer(){
+  stopOcTimer();
+  ocTimer=setInterval(()=>{
+    if(!document.getElementById('ocModal').classList.contains('show')){ stopOcTimer(); return; }
+    if(ST.fyToken) loadOC();
+  },3000);
+}
+function stopOcTimer(){ if(ocTimer){ clearInterval(ocTimer); ocTimer=null; } }
+
 function loadOC(){
   populateExpiries();
   const sym=document.getElementById('ocSym').value;
   const exp=document.getElementById('ocExp').value;
   document.getElementById('ocSt').textContent='Loading '+sym+'…';
-  if(ST.fyToken) loadOCLive(sym,exp); else loadOCDemo(sym,exp);
+  if(ST.fyToken) loadOCLive(sym,exp);
+  else{
+    document.getElementById('ocBody').innerHTML='<tr><td colspan="9" style="padding:24px;color:var(--text3);text-align:center">🔒 Login to Fyers to see the live option chain</td></tr>';
+    document.getElementById('ocSt').textContent='Not connected to Fyers';
+  }
 }
 
 async function loadOCLive(sym,exp){
@@ -1879,8 +1880,8 @@ async function loadOCLive(sym,exp){
     renderOC(strikes,cm,pm,atm,spot,sym,exp);
     document.getElementById('ocSt').textContent=sym+' Spot:'+spot.toFixed(2)+' ATM:'+atm+' · LIVE';
   }catch(e){
-    loadOCDemo(sym,exp);
-    document.getElementById('ocSt').textContent='⚠️ LIVE FAILED: '+e.message+' — showing DEMO data below';
+    document.getElementById('ocBody').innerHTML='<tr><td colspan="9" style="padding:24px;color:var(--red);text-align:center">⚠️ '+e.message+'</td></tr>';
+    document.getElementById('ocSt').textContent='⚠️ LIVE FETCH FAILED: '+e.message;
     document.getElementById('ocSt').style.color='var(--red)';
     console.error('Option chain live fetch failed:',e);
   }
@@ -1894,22 +1895,6 @@ function expiryStrToDDMMYYYY(exp){
   const months={JAN:'01',FEB:'02',MAR:'03',APR:'04',MAY:'05',JUN:'06',JUL:'07',AUG:'08',SEP:'09',OCT:'10',NOV:'11',DEC:'12'};
   const mo=months[m[2]]; if(!mo) return '';
   return `${m[1]}-${mo}-${m[3]}`;
-}
-
-function loadOCDemo(sym,exp){
-  const bases={NIFTY:24416,BANKNIFTY:52012,FINNIFTY:23870,MIDCPNIFTY:12200,SENSEX:80576};
-  const steps={NIFTY:50,BANKNIFTY:100,FINNIFTY:50,MIDCPNIFTY:25,SENSEX:100};
-  const base=bases[sym]||24416; const st=steps[sym]||50;
-  const atm=Math.round(base/st)*st;
-  const cm={},pm={},strikes=[];
-  for(let i=-12;i<=12;i++){
-    const s=atm+i*st; strikes.push(s);
-    const dist=Math.abs(i);
-    cm[s]={ltp:Math.max(2,(12-dist)*55+Math.random()*25).toFixed(1),oi:Math.round((14-dist)*500000+Math.random()*200000),oi_change:Math.round((Math.random()-.4)*50000),volume:Math.round(Math.random()*180000)};
-    pm[s]={ltp:Math.max(2,(12-dist)*55+Math.random()*25).toFixed(1),oi:Math.round((14-dist)*500000+Math.random()*200000),oi_change:Math.round((Math.random()-.4)*50000),volume:Math.round(Math.random()*180000)};
-  }
-  renderOC(strikes,cm,pm,atm,base,sym,exp);
-  document.getElementById('ocSt').textContent=sym+' DEMO ATM:'+atm+' | Tap to fill order';
 }
 
 let ocData={}; // strike -> {ce:{...}, pe:{...}}, ocMeta -> {sym, exp}
@@ -2114,12 +2099,16 @@ function placeOrder(){
     return;
   }
 
-  // Paper order
-  const order={id:Date.now(),symbol,sym:priceKey,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,prod,ordT,price:fillP,target,sl,tsl,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN'),status:'EXECUTED'};
+  // Paper order — also tagged with fySymbol (same as live orders) so the live
+  // quote feed can find and update it; without this, paper P&L would never move.
+  if(seg==='OPT'&&!fySymbol){
+    showToast('⚠️ Open the Option Chain and tap the exact strike/CE/PE first — otherwise this paper position won\'t get live price updates.');
+  }
+  const order={id:Date.now(),symbol,sym:priceKey,fySymbol,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,prod,ordT,price:fillP,target,sl,tsl,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN'),status:'EXECUTED'};
   ST.orders.push(order);
   const ex=ST.pos.find(p=>p.symbol===symbol&&p.bs===bs&&p.prod===prod);
-  if(ex){ const tq=ex.qty+actualQty; ex.avgP=((ex.avgP*ex.qty)+(fillP*actualQty))/tq; ex.qty=tq; }
-  else ST.pos.push({id:Date.now(),symbol,sym:priceKey,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,prod,avgP:fillP,ltp:fillP,target,sl,tsl,tslHW:fillP,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
+  if(ex){ const tq=ex.qty+actualQty; ex.avgP=((ex.avgP*ex.qty)+(fillP*actualQty))/tq; ex.qty=tq; if(!ex.fySymbol&&fySymbol) ex.fySymbol=fySymbol; }
+  else ST.pos.push({id:Date.now(),symbol,sym:priceKey,fySymbol,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,prod,avgP:fillP,ltp:fillP,target,sl,tsl,tslHW:fillP,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
   save(); renderAll();
   showToast('✅ '+bs+' '+qty+(seg!=='EQ'?' lot':'')+(seg==='OPT'||seg==='FUT'?' ('+actualQty+' qty)':'')+' '+symbol+' @ ₹'+fillP.toFixed(2));
 }
@@ -2401,22 +2390,6 @@ function renderPortfolio(){
   const net=capBase+real-used;
   document.getElementById('capNet').textContent='₹'+net.toLocaleString('en-IN',{maximumFractionDigits:0});
 }
-function simPrices(){
-  const base={RELIANCE:2845,TCS:3920,INFY:1560,HDFCBANK:1672,ICICIBANK:1230,SBIN:820,BAJFINANCE:6800,WIPRO:490,NIFTY:24416,BANKNIFTY:52012,TATAMOTORS:780,FINNIFTY:23870,ADANIENT:2340,MIDCPNIFTY:12200};
-  Object.keys(base).forEach(s=>{ if(!ST.prices[s]) ST.prices[s]=base[s]; });
-  setInterval(()=>{
-    if(ST.mode==='live'||ST.fyToken) return; // live quote feed drives prices instead of the simulator whenever connected
-    Object.keys(base).forEach(s=>{ const c=(Math.random()-.498)*ST.prices[s]*.0008; ST.prices[s]=parseFloat((ST.prices[s]+c).toFixed(2)); });
-    ST.pos.forEach(p=>{ if(p.seg==='OPT'){ if(ST.prices[p.sym]===undefined) ST.prices[p.sym]=p.ltp; const c=(Math.random()-.48)*ST.prices[p.sym]*.006; ST.prices[p.sym]=Math.max(.05,parseFloat((ST.prices[p.sym]+c).toFixed(2))); } });
-    ST.wl.forEach(w=>{ if(ST.prices[w.sym]){ const old=w.ltp||ST.prices[w.sym]; w.ltp=ST.prices[w.sym]; w.chg=parseFloat(((w.ltp/old-1)*100).toFixed(2)); } });
-    ST.pos.forEach(p=>{ if(ST.prices[p.sym]) p.ltp=ST.prices[p.sym]; });
-    document.getElementById('mN').textContent=(ST.prices.NIFTY||24416).toLocaleString('en-IN');
-    document.getElementById('mB').textContent=(ST.prices.BANKNIFTY||52012).toLocaleString('en-IN');
-    document.getElementById('mS').textContent=Math.round((ST.prices.NIFTY||24416)*3.3).toLocaleString('en-IN');
-    document.getElementById('mF').textContent=(ST.prices.FINNIFTY||23870).toLocaleString('en-IN');
-    renderWatchlist(); renderPositions(); updMetrics(); checkSLTgt();
-  },1500);
-}
 
 // ================================================================
 // LIVE QUOTE FEED — polls Fyers quotes for indices + every open live
@@ -2464,10 +2437,10 @@ async function pollLiveQuotes(){
       else if(q.n==='BSE:SENSEX-INDEX') ST.prices.SENSEX=lp;
       else ST.prices[q.n]=lp; // live positions/watchlist use their fySymbol as the price key
     });
-    document.getElementById('mN').textContent=(ST.prices.NIFTY||24416).toLocaleString('en-IN');
-    document.getElementById('mB').textContent=(ST.prices.BANKNIFTY||52012).toLocaleString('en-IN');
-    document.getElementById('mS').textContent=(ST.prices.SENSEX||Math.round((ST.prices.NIFTY||24416)*3.3)).toLocaleString('en-IN');
-    document.getElementById('mF').textContent=(ST.prices.FINNIFTY||23870).toLocaleString('en-IN');
+    document.getElementById('mN').textContent=ST.prices.NIFTY!=null?ST.prices.NIFTY.toLocaleString('en-IN'):'—';
+    document.getElementById('mB').textContent=ST.prices.BANKNIFTY!=null?ST.prices.BANKNIFTY.toLocaleString('en-IN'):'—';
+    document.getElementById('mS').textContent=ST.prices.SENSEX!=null?ST.prices.SENSEX.toLocaleString('en-IN'):'—';
+    document.getElementById('mF').textContent=ST.prices.FINNIFTY!=null?ST.prices.FINNIFTY.toLocaleString('en-IN'):'—';
     ST.wl.forEach(w=>{ const k='NSE:'+w.sym+'-EQ'; if(ST.prices[k]!==undefined){ const old=w.ltp||ST.prices[k]; w.ltp=ST.prices[k]; w.chg=parseFloat(((w.ltp/old-1)*100).toFixed(2)); } });
     ST.pos.forEach(p=>{ if(p.fySymbol&&ST.prices[p.fySymbol]!==undefined) p.ltp=ST.prices[p.fySymbol]; });
     save(); renderWatchlist(); renderPositions(); updMetrics(); checkSLTgt();
