@@ -1278,8 +1278,8 @@ function toggleCocAuto(){
   cocFastTimer=null; cocSlowTimer=null;
   if(!on) return;
   if(!cocData.length){ showToast('Run a Scan first, then turn Auto on'); document.getElementById('cocAuto').checked=false; return; }
-  cocFastTimer=setInterval(cocFastRefresh,5000);
-  cocSlowTimer=setInterval(cocSlowRefresh,9000);
+  cocFastTimer=setInterval(cocFastRefresh,7000);
+  cocSlowTimer=setInterval(cocSlowRefresh,60000);
 }
 
 let cocFastRunning=false;
@@ -2025,7 +2025,25 @@ function updateOrderSummary(){
 // ================================================================
 // PLACE ORDER
 // ================================================================
-function placeOrder(){
+// Fetches a single fresh LTP straight from Fyers right now — used to guard
+// against filling an order (paper or live) off a price that was cached in
+// the form several seconds/minutes ago (e.g. from the COC board or Option
+// Chain) and has since drifted. Returns null on any failure so callers can
+// silently fall back to whatever price they already had.
+async function fetchFreshLtp(fySymbol){
+  if(!fySymbol||!ST.fyToken) return null;
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    const r=await fetch('/api/quotes?symbols='+encodeURIComponent(fySymbol),{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error'||!d.d||!d.d.length) return null;
+    const v=d.d[0].v||{};
+    const lp=v.lp??v.ltp??v.last_price;
+    return lp==null?null:lp;
+  }catch(e){ return null; }
+}
+
+async function placeOrder(){
   const symRaw=document.getElementById('fSym').value.trim().toUpperCase();
   if(!symRaw){ showToast('Enter a symbol'); return; }
   const qty=parseInt(document.getElementById('fQty').value)||1;
@@ -2071,7 +2089,18 @@ function placeOrder(){
 
   // Price
   const ltpField=parseFloat(document.getElementById('fPrice').value);
-  const ltp=(seg==='OPT'&&ltpField>0)?ltpField:(ST.prices[priceKey]||ST.prices[symRaw]||(seg==='OPT'?80:2000));
+  let ltp=(seg==='OPT'&&ltpField>0)?ltpField:(ST.prices[priceKey]||ST.prices[symRaw]||(seg==='OPT'?80:2000));
+
+  // MARKET/SL-M orders fill at "current price" by definition — refetch a live
+  // quote right now instead of trusting a value that may have been sitting in
+  // the form since it was last picked from the COC board / Option Chain.
+  // Without this, avgP gets frozen at a stale price and the very next quote
+  // poll can make P&L jump instantly (e.g. showing thousands of profit/loss
+  // on a brand-new position that hasn't actually moved).
+  if((ordT==='MARKET'||ordT==='SL-M')&&fySymbol){
+    const fresh=await fetchFreshLtp(fySymbol);
+    if(fresh!=null) ltp=fresh;
+  }
   if(seg==='OPT'&&!ST.prices[priceKey]) ST.prices[priceKey]=ltp;
 
   const limitP=ltpField||ltp;
