@@ -690,6 +690,11 @@ if(!ST.wl||!ST.wl.length){
 document.getElementById('sCap').value=ST.capital;
 document.getElementById('sTok').value=ST.fyToken||'';
 
+// Declared early (before the boot sequence below) because updLoginBtn()
+// reads these — calling it before this line would throw a temporal-dead-
+// zone ReferenceError ("Cannot access 'cocScanning' before initialization").
+let cocScanning=false, cocData=[];
+
 renderAll(); updLoginBtn(); initCocCrosshair();
 if(ST.fyToken) startLiveFeed();
 
@@ -1059,7 +1064,6 @@ function populateExpiries(){
 // ================================================================
 const COC_STEP={NIFTY:50,BANKNIFTY:100,FINNIFTY:50,MIDCPNIFTY:25,SENSEX:100,BANKEX:100};
 const COC_IDX={NIFTY:'NSE:NIFTY50-INDEX',BANKNIFTY:'NSE:NIFTYBANK-INDEX',FINNIFTY:'NSE:FINNIFTY-INDEX',MIDCPNIFTY:'NSE:MIDCPNIFTY-INDEX',SENSEX:'BSE:SENSEX-INDEX',BANKEX:'BSE:BANKEX-INDEX'};
-let cocScanning=false, cocData=[];
 let cocSniCache={}; // "symbol" -> {date:'YYYY-MM-DD', pdc:number} — PDC is fixed for the whole day, no need to refetch every scan
 
 function populateCocExpiries(){
