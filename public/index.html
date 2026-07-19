@@ -666,7 +666,8 @@ let ST = {
 };
 let editId=null;
 let authUrl='';
-let liveFeedTmr=null, livePosSyncTmr=null;
+let liveFeedTmr=null, livePosSyncTmr=null, liveFeedFailCount=0;
+const LIVE_FEED_BASE_MS=3000, LIVE_FEED_MAX_MS=30000;
 
 // ================================================================
 // STORAGE — localStorage (persists across sessions on same device)
@@ -2462,14 +2463,28 @@ function renderPortfolio(){
 // ================================================================
 function startLiveFeed(){
   stopLiveFeed();
-  pollLiveQuotes();
-  liveFeedTmr=setInterval(pollLiveQuotes,3000);
+  liveFeedFailCount=0;
+  scheduleNextQuotePoll(0);
   syncFyersAccount();
-  livePosSyncTmr=setInterval(syncFyersAccount,10000);
+  livePosSyncTmr=setInterval(syncFyersAccount,15000);
 }
 function stopLiveFeed(){
-  if(liveFeedTmr){ clearInterval(liveFeedTmr); liveFeedTmr=null; }
+  if(liveFeedTmr){ clearTimeout(liveFeedTmr); liveFeedTmr=null; }
   if(livePosSyncTmr){ clearInterval(livePosSyncTmr); livePosSyncTmr=null; }
+}
+function scheduleNextQuotePoll(delay){
+  liveFeedTmr=setTimeout(async()=>{
+    await pollLiveQuotes();
+    // Back off exponentially (3s → 6s → 12s … capped at 30s) after each
+    // consecutive failure, instead of retrying every 3s regardless — that
+    // fixed-interval retry was itself adding to the rate-limit pressure
+    // that caused the failures in the first place. Resets to 3s the moment
+    // a poll succeeds again.
+    const nextDelay=liveFeedFailCount>0
+      ? Math.min(LIVE_FEED_BASE_MS*Math.pow(2,liveFeedFailCount),LIVE_FEED_MAX_MS)
+      : LIVE_FEED_BASE_MS;
+    scheduleNextQuotePoll(nextDelay);
+  },delay);
 }
 function syncFyersAccount(){
   // Real account state (positions/funds/orders) only syncs in Live mode.
@@ -2495,7 +2510,7 @@ async function pollLiveQuotes(){
   if(!all.length) return;
   try{
     const auth=FYERS_APP_ID+':'+ST.fyToken;
-    const r=await fetch('/api/quotes?symbols='+encodeURIComponent(all.join(',')),{headers:{'Authorization':auth}});
+    const r=await fetchT('/api/quotes?symbols='+encodeURIComponent(all.join(',')),{headers:{'Authorization':auth}});
     const d=await r.json();
     if(d.s==='error') throw new Error(d.message||'quote error');
     (d.d||[]).forEach(q=>{
@@ -2520,11 +2535,13 @@ async function pollLiveQuotes(){
     }
     const fs=document.getElementById('feedSt'); fs.style.display='none';
     setFeedDot(true);
+    liveFeedFailCount=0;
   }catch(e){
     console.warn('Live quote poll failed:',e.message);
     const fs=document.getElementById('feedSt');
     fs.style.display='block'; fs.textContent='⚠️ Live feed error: '+e.message;
     setFeedDot(false);
+    liveFeedFailCount++;
   }
 }
 // Reconciles locally-tracked live positions with what Fyers actually shows —
