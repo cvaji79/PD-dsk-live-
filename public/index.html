@@ -692,17 +692,8 @@ if(!ST.wl||!ST.wl.length){
 document.getElementById('sCap').value=ST.capital;
 document.getElementById('sTok').value=ST.fyToken||'';
 
-// Declared early (before the boot sequence below) because updLoginBtn()
-// reads these — calling it before this line would throw a temporal-dead-
-// zone ReferenceError ("Cannot access 'cocScanning' before initialization").
 let cocScanning=false, cocData=[];
-
-// Declared early (before the boot sequence below) because populateCocExpiries()
-// now runs at boot and depends on this via isNonTradingDay()/getExpiryOptions().
 const NSE_HOLIDAYS_2026=['2026-01-15','2026-01-26','2026-02-15','2026-03-03','2026-03-21','2026-03-26','2026-03-31','2026-04-03','2026-04-14','2026-05-01','2026-05-28','2026-06-26','2026-08-15','2026-09-14','2026-10-02','2026-10-20','2026-11-10','2026-11-24','2026-12-25'];
-
-renderAll(); updLoginBtn(); initCocCrosshair(); populateCocExpiries();
-if(ST.fyToken) startLiveFeed();
 
 // ================================================================
 // FYERS LOGIN — mirrors Python nifty_oi_tracker.py flow exactly
@@ -2611,6 +2602,14 @@ if('serviceWorker' in navigator){
     setInterval(()=>reg.update(),5*60*1000); // and keep checking every 5 min while the app is open
   }).catch(()=>{});
 }
+
+// Boot sequence runs LAST, after every const/let/function in this script has
+// been declared — calling any of these earlier risks a temporal-dead-zone
+// crash on whichever later-declared variable they happen to touch (this bit
+// us twice already: cocScanning/cocData, then NSE_HOLIDAYS_2026, then
+// COC_IDX). Keep new boot-time init calls down here, not further up.
+renderAll(); updLoginBtn(); initCocCrosshair(); populateCocExpiries();
+if(ST.fyToken) startLiveFeed();
 </script>
 </body>
 </html>
