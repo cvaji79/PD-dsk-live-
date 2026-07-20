@@ -883,10 +883,16 @@ function resampleCandles(oneMin,everyN){
   return order.map(t=>buckets[t]);
 }
 
-async function fetchHistory(fySymbol,resolution,rangeFrom,rangeTo){
+async function fetchHistory(fySymbol,resolution,rangeFrom,rangeTo,retries=2){
   const auth=FYERS_APP_ID+':'+ST.fyToken;
   const url=`/api/history?symbol=${encodeURIComponent(fySymbol)}&resolution=${resolution}&date_format=1&range_from=${rangeFrom}&range_to=${rangeTo}&cont_flag=1`;
   const r=await fetch(url,{headers:{'Authorization':auth}});
+  if(r.status===429 && retries>0){
+    // Fyers/Cloudflare rate-limited us — back off and retry rather than
+    // letting it cascade into every remaining call in the scan failing too.
+    await new Promise(res=>setTimeout(res,1200));
+    return fetchHistory(fySymbol,resolution,rangeFrom,rangeTo,retries-1);
+  }
   const d=await r.json();
   if(d.s==='error') throw new Error(d.message||'history error');
   return (d.candles||[]).map(c=>({t:c[0],o:c[1],h:c[2],l:c[3],c:c[4],v:c[5]}));
@@ -1152,10 +1158,10 @@ async function runCocScan(){
       row.peSymbol=pe?.symbol||null;
       try{
         if(ce?.symbol && pe?.symbol){
-          const [ce1m,pe1m]=await Promise.all([
-            fetchHistory(ce.symbol,'1',ymd(today),ymd(today)),
-            fetchHistory(pe.symbol,'1',ymd(today),ymd(today))
-          ]);
+          // Sequential, not Promise.all — firing both at once doubles our
+          // peak request rate into Fyers and was tripping their 429 rate-limit.
+          const ce1m=await fetchHistory(ce.symbol,'1',ymd(today),ymd(today));
+          const pe1m=await fetchHistory(pe.symbol,'1',ymd(today),ymd(today));
           const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
           const n=Math.min(ce3.length,pe3.length);
           for(let i=n-1;i>=0;i--){
@@ -1172,7 +1178,7 @@ async function runCocScan(){
       done++;
       stSt.textContent=`Fetching CE/PE 3m + PDC… (${done}/${strikes.length})`;
       renderCocTable();
-      await new Promise(res=>setTimeout(res,150)); // gentle pacing to respect Fyers rate limits
+      await new Promise(res=>setTimeout(res,400)); // pacing to respect Fyers rate limits (150ms was too aggressive and triggered 429s)
     }
     stSt.textContent=`Scan complete — ${sym} ${exp} · ATM ${atm} · Spot ${spot.toFixed(2)}`;
   }catch(e){
@@ -1679,7 +1685,7 @@ function startOcTimer(){
   ocTimer=setInterval(()=>{
     if(!document.getElementById('ocModal').classList.contains('show')){ stopOcTimer(); return; }
     if(ST.fyToken) loadOC();
-  },3000);
+  },5000); // was 3000 — eased slightly to reduce baseline request rate against Fyers' limits
 }
 function stopOcTimer(){ if(ocTimer){ clearInterval(ocTimer); ocTimer=null; } }
 
