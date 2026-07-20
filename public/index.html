@@ -829,15 +829,42 @@ let breadthResults=[]; // [{sym, byTf:{'1':{rvi,sig,bullish}, ...}, pdc,pdh,pdl,
 let breadthScanning=false;
 let fnoList=null; // resolved once per session
 
+// ================================================================
+// BREADTH SCAN WATCHLIST — curated instead of full F&O universe
+// Limits the scan to stocks that are constituents of NIFTY 50, Bank
+// Nifty, Sensex, and Nifty Midcap Select, per your request — this cuts
+// the scan from ~200+ F&O stocks down to ~85, directly reducing request
+// volume against Fyers' rate limit.
+//
+// Index constituents change periodically (NSE/BSE rebalance roughly
+// every 6 months). This list reflects late-2025/mid-2026 composition —
+// EDIT THIS ARRAY DIRECTLY if you notice a stock has since been added
+// to/dropped from one of these indices; no other code changes needed.
+// ================================================================
+const CUSTOM_WATCHLIST=[
+  // NIFTY 50
+  'ADANIENT','ADANIPORTS','APOLLOHOSP','ASIANPAINT','AXISBANK','BAJAJ-AUTO','BAJFINANCE',
+  'BAJAJFINSV','BEL','BHARTIARTL','CIPLA','COALINDIA','DRREDDY','EICHERMOT','ETERNAL',
+  'GRASIM','HCLTECH','HDFCBANK','HDFCLIFE','HINDALCO','HINDUNILVR','ICICIBANK','INDIGO',
+  'INFY','ITC','JIOFIN','JSWSTEEL','KOTAKBANK','LT','M&M','MARUTI','MAXHEALTH','NESTLEIND',
+  'NTPC','ONGC','POWERGRID','RELIANCE','SBILIFE','SHRIRAMFIN','SBIN','SUNPHARMA','TCS',
+  'TATACONSUM','TATASTEEL','TECHM','TITAN','TRENT','ULTRACEMCO','WIPRO',
+  // Bank Nifty extras (not already in NIFTY 50 above)
+  'INDUSINDBK','BANKBARODA','PNB','FEDERALBNK','AUBANK','IDFCFIRSTB','CANBK',
+  // Sensex extras (not already above)
+  'TATAMOTORS','HEROMOTOCO',
+  // Nifty Midcap Select / liquid midcap F&O names — verify/edit periodically
+  'LTF','PFC','RECLTD','MFSL','PERSISTENT','POLYCAB','INDHOTEL','SUPREMEIND',
+  'CUMMINSIND','COFORGE','LUPIN','AUROPHARMA','TORNTPHARM','ASHOKLEY','TVSMOTOR',
+  'BHARATFORG','INDUSTOWER','PIIND','VOLTAS','GODREJPROP','DIXON','OBEROIRLTY',
+  'JUBLFOOD','SAIL','NMDC','IRCTC','PNBHOUSING'
+];
+
 async function getFnoList(){
-  if(fnoList) return fnoList;
-  try{
-    const r=await fetch('/api/fno-list');
-    const d=await r.json();
-    if(d.s==='ok'&&d.symbols&&d.symbols.length>20){ fnoList=d.symbols; return fnoList; }
-  }catch(e){ /* fall through to bundled list */ }
-  fnoList=FNO_STOCKS_FALLBACK.slice();
-  return fnoList;
+  // Was: fetch the full F&O universe (~200+ stocks) from Fyers' symbol master.
+  // Now: fixed curated watchlist (~85 stocks) per your request — no network
+  // call needed here at all, which also removes one more source of load.
+  return CUSTOM_WATCHLIST;
 }
 
 // Simple moving average, returns null where insufficient history
@@ -1030,6 +1057,16 @@ function formatExpiry(d){
   const months=['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
   return String(d.getDate()).padStart(2,'0')+months[d.getMonth()]+d.getFullYear();
 }
+// Resolves the near-month futures contract symbol for a watchlist FUT row,
+// e.g. NIFTY -> 'NFO:NIFTY30JUL2026FUT'. Mirrors the same weekday/expiry
+// logic already used by getExpiryOptions() for order placement, so the
+// watchlist quote and the order form always agree on which contract "the
+// current future" means.
+function getNearestFutSymbol(sym){
+  const weekday=(sym==='SENSEX'||sym==='BANKEX')?4:2;
+  const exp=getMonthlyExpiries(weekday,1)[0];
+  return 'NFO:'+sym+formatExpiry(exp)+'FUT';
+}
 function getExpiryOptions(sym){
   let entries=[];
   if(sym==='NIFTY'){
@@ -1115,7 +1152,7 @@ async function runCocScan(){
     const ts=match?match.expiry:'';
 
     stSt.textContent='Loading chain…';
-    let url='/api/optionchain?symbol='+baseSymbol+'&strikecount=17'; // buffer beyond ATM±7 so OTM-neighbor SNI lookups always resolve
+    let url='/api/optionchain?symbol='+baseSymbol+'&strikecount=13'; // buffer beyond ATM±5 so OTM-neighbor SNI lookups always resolve
     if(ts) url+='&timestamp='+ts;
     const r=await fetchT(url,{headers:{'Authorization':auth}});
     const d=await r.json();
@@ -1142,7 +1179,7 @@ async function runCocScan(){
       <span style="${ol?'color:var(--red);font-weight:700':''}">L: ${dayL.toFixed(2)}${ol?' (O=L)':''}</span>
     `;
 
-    const strikes=[]; for(let i=-7;i<=7;i++) strikes.push(atm+i*step);
+    const strikes=[]; for(let i=-5;i<=5;i++) strikes.push(atm+i*step); // ATM ±5 (11 strikes) — was ±7 (15), reduced to lower request volume against Fyers' rate limit
     const pdcFrom=new Date(today.getTime()-6*86400000);
     cocData=strikes.map(s=>({strike:s,ceLtp:null,peLtp:null,map:null,mph:null,mpl:null,mpTime:null,mpTimestamp:null,sni:null,isAtm:s===atm}));
     renderCocTable();
@@ -2479,11 +2516,21 @@ function setFeedDot(ok){
   dot.className='dot '+(ok?'live':'off');
   if(lbl) lbl.textContent=ok?'Live':(ST.fyToken?'Feed error':'Not connected');
 }
+// Resolves any watchlist row to its Fyers quote symbol. FUT rows previously
+// fell through to null here — meaning they were silently dropped from every
+// quote poll and just displayed their frozen add-time value forever, which
+// is why NIFTY FUT looked identical to NIFTY INDEX and never moved.
+function wlQuoteSymbol(w){
+  if(w.seg==='EQ') return 'NSE:'+w.sym+'-EQ';
+  if(w.seg==='INDEX') return COC_IDX[w.sym];
+  if(w.seg==='FUT') return getNearestFutSymbol(w.sym);
+  return null;
+}
 async function pollLiveQuotes(){
   if(!ST.fyToken){ setFeedDot(false); return; }
   const idxSymbols=['NSE:NIFTY50-INDEX','NSE:NIFTYBANK-INDEX','NSE:FINNIFTY-INDEX','BSE:SENSEX-INDEX'];
   const posSymbols=ST.pos.map(p=>p.fySymbol).filter(Boolean);
-  const wlSymbols=ST.wl.map(w=>w.seg==='EQ'?('NSE:'+w.sym+'-EQ'):w.seg==='INDEX'?COC_IDX[w.sym]:null).filter(Boolean);
+  const wlSymbols=ST.wl.map(wlQuoteSymbol).filter(Boolean);
   const all=[...new Set([...idxSymbols,...posSymbols,...wlSymbols])].slice(0,50);
   if(!all.length) return;
   try{
@@ -2505,7 +2552,7 @@ async function pollLiveQuotes(){
     document.getElementById('mB').textContent=ST.prices.BANKNIFTY!=null?ST.prices.BANKNIFTY.toLocaleString('en-IN'):'—';
     document.getElementById('mS').textContent=ST.prices.SENSEX!=null?ST.prices.SENSEX.toLocaleString('en-IN'):'—';
     document.getElementById('mF').textContent=ST.prices.FINNIFTY!=null?ST.prices.FINNIFTY.toLocaleString('en-IN'):'—';
-    ST.wl.forEach(w=>{ const k=w.seg==='EQ'?('NSE:'+w.sym+'-EQ'):w.seg==='INDEX'?COC_IDX[w.sym]:null; if(k&&ST.prices[k]!==undefined){ const old=w.ltp||ST.prices[k]; w.ltp=ST.prices[k]; w.chg=parseFloat(((w.ltp/old-1)*100).toFixed(2)); } });
+    ST.wl.forEach(w=>{ const k=wlQuoteSymbol(w); if(k&&ST.prices[k]!==undefined){ const old=w.ltp||ST.prices[k]; w.ltp=ST.prices[k]; w.chg=parseFloat(((w.ltp/old-1)*100).toFixed(2)); } });
     ST.pos.forEach(p=>{ if(p.fySymbol&&ST.prices[p.fySymbol]!==undefined) p.ltp=ST.prices[p.fySymbol]; });
     save(); renderWatchlist(); renderPositions(); updMetrics(); checkSLTgt();
     if(editId!=null && document.getElementById('editModal').classList.contains('show')){
