@@ -625,7 +625,8 @@ canvas.mc{width:100%;height:58px}
 // CONSTANTS — Hardcoded Fyers credentials (your trading bot)
 // ================================================================
 const FYERS_APP_ID  = '5WESGP23O5-200';
-const FYERS_SECRET  = 'SujPC5mIX0r20rv1';
+// FYERS_SECRET intentionally removed — it now lives only as a Render
+// environment variable used inside server.js, never sent to the browser.
 const FYERS_REDIR   = 'https://trade.fyers.in/api-login/redirect-uri/index.html';
 
 // Correct NSE/NFO lot sizes as of 2026
@@ -747,14 +748,13 @@ async function submitCode(){
   setFst('st3','⏳ Computing hash + exchanging code for token…','finfo');
 
   try{
-    // SHA256(app_id:secret_key) — fixes Fyers error -441
-    const hashBuf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(FYERS_APP_ID+':'+FYERS_SECRET));
-    const appIdHash=Array.from(new Uint8Array(hashBuf)).map(b=>b.toString(16).padStart(2,'0')).join('');
-
-    const resp=await fetch('https://api-t1.fyers.in/api/v3/validate-authcode',{
+    // Exchanged server-side now (server.js /api/auth/token) so this call —
+    // and the token it produces — goes out through the same static IP as
+    // every other Fyers call, and the App Secret never reaches the browser.
+    const resp=await fetch('/api/auth/token',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ grant_type:'authorization_code', appIdHash, code })
+      body:JSON.stringify({ code })
     });
     const data=await resp.json();
 
