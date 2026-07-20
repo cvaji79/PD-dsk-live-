@@ -697,7 +697,11 @@ document.getElementById('sTok').value=ST.fyToken||'';
 // zone ReferenceError ("Cannot access 'cocScanning' before initialization").
 let cocScanning=false, cocData=[];
 
-renderAll(); updLoginBtn(); initCocCrosshair();
+// Declared early (before the boot sequence below) because populateCocExpiries()
+// now runs at boot and depends on this via isNonTradingDay()/getExpiryOptions().
+const NSE_HOLIDAYS_2026=['2026-01-15','2026-01-26','2026-02-15','2026-03-03','2026-03-21','2026-03-26','2026-03-31','2026-04-03','2026-04-14','2026-05-01','2026-05-28','2026-06-26','2026-08-15','2026-09-14','2026-10-02','2026-10-20','2026-11-10','2026-11-24','2026-12-25'];
+
+renderAll(); updLoginBtn(); initCocCrosshair(); populateCocExpiries();
 if(ST.fyToken) startLiveFeed();
 
 // ================================================================
@@ -989,7 +993,6 @@ function fmtN(n){
 // SENSEX: weekly=Thursday (BSE), monthly=last Thursday
 // BANKNIFTY/FINNIFTY/MIDCPNIFTY: monthly only (weeklies discontinued), last Tuesday
 // ================================================================
-const NSE_HOLIDAYS_2026=['2026-01-15','2026-01-26','2026-02-15','2026-03-03','2026-03-21','2026-03-26','2026-03-31','2026-04-03','2026-04-14','2026-05-01','2026-05-28','2026-06-26','2026-08-15','2026-09-14','2026-10-02','2026-10-20','2026-11-10','2026-11-24','2026-12-25'];
 function isNonTradingDay(d){
   const iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
   return d.getDay()===0||d.getDay()===6||NSE_HOLIDAYS_2026.includes(iso);
