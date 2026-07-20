@@ -14,6 +14,19 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+const { ProxyAgent, setGlobalDispatcher } = require('undici');
+
+// Route ALL outbound fetch() calls (quotes, option chain, orders, login, etc.)
+// through the staticip.in static IP so Fyers' IP whitelist accepts them.
+// Without this, Render assigns a shared/rotating IP and both login and
+// order placement get rejected as "not from a whitelisted IP".
+if (process.env.STATIC_PROXY_URL) {
+  setGlobalDispatcher(new ProxyAgent(process.env.STATIC_PROXY_URL));
+  console.log('  Routing all outbound Fyers calls through static proxy IP.');
+} else {
+  console.log('  WARNING: STATIC_PROXY_URL not set — outbound calls will use Render\'s shared IP range, which Fyers will reject.');
+}
 
 const app = express();
 app.use(cors());
@@ -32,6 +45,8 @@ function getLanIps() {
 }
 
 const FYERS_BASE = 'https://api-t1.fyers.in';
+const FYERS_APP_ID = process.env.FYERS_APP_ID || '5WESGP23O5-200';
+const FYERS_SECRET = process.env.FYERS_SECRET || ''; // set this in Render → Environment
 
 function authHeader(req) {
   return req.header('Authorization') || req.query.auth || '';
@@ -116,6 +131,25 @@ app.get('/api/orderbook', (req, res) => {
   relay(res, `${FYERS_BASE}/api/v3/orders`, { headers: { Authorization: authHeader(req) } });
 });
 
+// Daily login: exchange auth_code for access_token, server-side.
+// This goes out through the same static IP as every order/data call, and
+// keeps FYERS_SECRET off the browser entirely.
+app.post('/api/auth/token', async (req, res) => {
+  const { code } = req.body || {};
+  if (!code) {
+    return res.status(400).json({ s: 'error', message: 'Missing auth code' });
+  }
+  if (!FYERS_SECRET) {
+    return res.status(500).json({ s: 'error', message: 'FYERS_SECRET is not set on the server (Render → Environment).' });
+  }
+  const appIdHash = crypto.createHash('sha256').update(`${FYERS_APP_ID}:${FYERS_SECRET}`).digest('hex');
+  relay(res, `${FYERS_BASE}/api/v3/validate-authcode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ grant_type: 'authorization_code', appIdHash, code })
+  });
+});
+
 // Place / exit orders
 app.post('/api/orders', (req, res) => {
   relay(res, `${FYERS_BASE}/api/v3/orders/sync`, {
@@ -165,6 +199,14 @@ app.get('/api/fno-list', async (req, res) => {
     console.log(`\n  [fno-list] ${e.message} — frontend will use its bundled fallback list\n`);
     res.status(502).json({ s: 'error', message: e.message });
   }
+});
+
+// Lightweight health check — point an external uptime monitor (see README)
+// at this so Render's free tier never sees enough idle time to sleep.
+// Deliberately does nothing but respond instantly: no Fyers call, no auth
+// needed, so it can't itself burn into your API rate limit.
+app.get('/api/ping', (req, res) => {
+  res.json({ s: 'ok', t: Date.now() });
 });
 
 const PORT = process.env.PORT || 5055;
