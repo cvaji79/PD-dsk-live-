@@ -334,15 +334,21 @@ canvas.mc{width:100%;height:58px}
       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;align-items:center">
         <div class="field" style="flex:0 0 70px;margin:0"><label style="font-size:8px">RVI Len</label><input id="rviLen" value="99" style="padding:5px 6px;font-size:11px"/></div>
         <div class="field" style="flex:0 0 70px;margin:0"><label style="font-size:8px">Signal</label><input id="rviSig" value="9" style="padding:5px 6px;font-size:11px"/></div>
-        <select id="rviTf" onchange="renderBreadthTable()" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:11px">
+        <select id="rviTf" onchange="refreshBreadthView()" style="background:var(--bg2);border:1px solid var(--border);border-radius:7px;padding:6px 8px;color:var(--text);font-size:11px">
           <option value="1">1M</option><option value="3">3M</option><option value="5">5M</option>
           <option value="15">15M</option><option value="25">25M</option><option value="75">75M</option>
           <option value="D">1 Day</option>
         </select>
         <button onclick="runBreadthScan()" id="breadthScanBtn" style="padding:6px 12px;border-radius:7px;border:1px solid var(--purple);background:var(--purple-bg);color:var(--purple);font-size:11px;font-weight:700;cursor:pointer">▶ Scan</button>
       </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:7px;align-items:center">
+        <div class="field" style="flex:0 0 90px;margin:0"><label style="font-size:8px">Osc Smooth (EMA)</label><input id="oscSmooth" value="5" oninput="refreshBreadthView()" style="padding:5px 6px;font-size:11px"/></div>
+        <div class="field" style="flex:0 0 90px;margin:0"><label style="font-size:8px">Osc Signal (EMA)</label><input id="oscSignal" value="9" oninput="refreshBreadthView()" style="padding:5px 6px;font-size:11px"/></div>
+        <div style="font-size:9px;color:var(--text3)">Smooths the 85-stock breadth into an oscillator, like the Pine RVI-BRO indicator</div>
+      </div>
       <div id="breadthSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Needs Fyers login. Scans the full F&O list — can take 1-2 minutes.</div>
       <div id="breadthTableWrap"></div>
+      <div id="breadthOscWrap" style="margin-top:8px"></div>
     </div>
   </div>
 
@@ -881,6 +887,8 @@ function smaSeries(arr,period){
 // Standard RVI: NUM/DEN use a 4-bar symmetric weighting of (close-open) and
 // (high-low), each smoothed by an N-period SMA (rviLen), then the RVI line
 // itself is smoothed by an SMA (sigLen) to form the signal line.
+// Also returns the full per-bar series (times/bullSeries) — needed to build
+// the aggregate 85-stock breadth oscillator, not just the latest snapshot.
 function calcRVI(candles,rviLen,sigLen){
   const n=candles.length;
   const num=new Array(n).fill(null), den=new Array(n).fill(null);
@@ -893,8 +901,44 @@ function calcRVI(candles,rviLen,sigLen){
   const smaNum=smaSeries(num,rviLen), smaDen=smaSeries(den,rviLen);
   const rvi=smaNum.map((v,i)=>(v!=null&&smaDen[i])?v/smaDen[i]:null);
   const signal=smaSeries(rvi,sigLen);
+  const bullSeries=rvi.map((v,i)=>(v!=null&&signal[i]!=null)?v>signal[i]:null);
   const last=n-1;
-  return {rvi:rvi[last],signal:signal[last],bullish:(rvi[last]!=null&&signal[last]!=null)?rvi[last]>signal[last]:null};
+  return {rvi:rvi[last],signal:signal[last],bullish:bullSeries[last],times:candles.map(c=>c.t),bullSeries};
+}
+
+// Standard EMA, seeded with the first value (no leading-null warmup needed
+// since the breadth series already has a value at every timestamp).
+function emaSeries(arr,period){
+  if(!arr.length) return [];
+  const k=2/(period+1);
+  const out=new Array(arr.length);
+  out[0]=arr[0];
+  for(let i=1;i<arr.length;i++) out[i]=arr[i]*k+out[i-1]*(1-k);
+  return out;
+}
+
+// Aggregates per-stock bullish/bearish classification into a single breadth
+// oscillator over time — the web-app equivalent of the Pine script's
+// "NSE F&O RVI Breadth Reversal Oscillator", but across all 85 curated
+// stocks instead of Pine's 40-call limit. Re-runs instantly from already
+// -fetched data whenever timeframe/smoothing inputs change — no rescan needed.
+function computeBreadthOscillator(tf,smoothLen,signalLen){
+  const tsMap={}; // timestamp -> {bull,bear}
+  breadthResults.forEach(r=>{
+    const s=r.byTf[tf];
+    if(!s||!s.times) return;
+    s.times.forEach((t,i)=>{
+      const b=s.bullSeries[i];
+      if(b==null) return;
+      if(!tsMap[t]) tsMap[t]={bull:0,bear:0};
+      if(b) tsMap[t].bull++; else tsMap[t].bear++;
+    });
+  });
+  const times=Object.keys(tsMap).map(Number).sort((a,b)=>a-b);
+  const raw=times.map(t=>{ const {bull,bear}=tsMap[t]; const total=bull+bear; return total?((bull-bear)/total*100):0; });
+  const osc=emaSeries(raw,smoothLen);
+  const sig=emaSeries(osc,signalLen);
+  return {times,raw,osc,sig};
 }
 
 // Groups 1-minute candles into clock-aligned N-minute buckets
@@ -965,13 +1009,13 @@ async function runBreadthScan(){
       console.warn('Breadth scan failed for',sym,e.message);
     }
     done++;
-    if(done%10===0) renderBreadthTable();
+    if(done%10===0) refreshBreadthView();
     await new Promise(res=>setTimeout(res,150)); // gentle pacing to respect rate limits
   }
   stSt.textContent=`Scan complete — ${breadthResults.length}/${list.length} stocks · RVI(${rviLen},${rviSig})`;
   btn.disabled=false; btn.textContent='▶ Scan';
   breadthScanning=false;
-  renderBreadthTable();
+  refreshBreadthView();
 }
 
 function renderBreadthTable(){
@@ -1009,6 +1053,80 @@ function fmtN(n){
   else if(s.length<=7) r=s.slice(0,-5)+','+s.slice(-5,-3)+','+s.slice(-3);
   else r=s.slice(0,-7)+','+s.slice(-7,-5)+','+s.slice(-5,-3)+','+s.slice(-3);
   return (ng?'-':'')+r;
+}
+
+// Recomputes both the count table and the oscillator from already-scanned
+// data — no new Fyers calls — so changing timeframe or the EMA smoothing
+// inputs updates instantly.
+function refreshBreadthView(){
+  renderBreadthTable();
+  renderBreadthOscillator();
+}
+
+const OSC_OB_LEVEL=60, OSC_OS_LEVEL=-60; // matches the Pine script's default Overbought/Oversold zones
+
+function renderBreadthOscillator(){
+  const wrap=document.getElementById('breadthOscWrap');
+  if(!wrap) return;
+  if(!breadthResults.length){ wrap.innerHTML=''; return; }
+  const tf=document.getElementById('rviTf').value;
+  const smoothLen=parseInt(document.getElementById('oscSmooth').value)||5;
+  const signalLen=parseInt(document.getElementById('oscSignal').value)||9;
+  const {times,osc,sig}=computeBreadthOscillator(tf,smoothLen,signalLen);
+  if(!times.length){ wrap.innerHTML='<div style="font-size:10px;color:var(--text3);text-align:center;padding:8px 0">No overlapping bars yet for this timeframe.</div>'; return; }
+
+  const W=Math.max(320,(wrap.clientWidth||320)), H=170, padL=30, padR=6, padT=8, padB=16;
+  const plotW=W-padL-padR, plotH=H-padT-padB;
+  const yMax=Math.max(100,...osc.map(Math.abs),...sig.map(Math.abs));
+  const yToPx=v=>padT+plotH/2-(v/yMax)*(plotH/2);
+  const xToPx=i=>padL+(times.length>1?(i/(times.length-1))*plotW:0);
+
+  const barW=Math.max(1,plotW/times.length*0.6);
+  let bars='';
+  osc.forEach((v,i)=>{
+    const x=xToPx(i), y0=yToPx(0), y1=yToPx(v);
+    const top=Math.min(y0,y1), h=Math.max(1,Math.abs(y1-y0));
+    bars+=`<rect x="${(x-barW/2).toFixed(1)}" y="${top.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" fill="${v>=0?'var(--green)':'var(--red)'}"/>`;
+  });
+
+  const sigPath=sig.map((v,i)=>`${i===0?'M':'L'}${xToPx(i).toFixed(1)},${yToPx(v).toFixed(1)}`).join(' ');
+
+  // Reversal markers — same crossover logic as the Pine script's
+  // bullReversal/bearReversal, but for our aggregated 85-stock oscillator.
+  let markers='';
+  for(let i=1;i<osc.length;i++){
+    const bull=osc[i-1]<=sig[i-1] && osc[i]>sig[i] && osc[i]<OSC_OS_LEVEL;
+    const bear=osc[i-1]>=sig[i-1] && osc[i]<sig[i] && osc[i]>OSC_OB_LEVEL;
+    if(bull||bear){
+      const x=xToPx(i), y=yToPx(osc[i]);
+      markers+=`<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="none" stroke="#4dabf7" stroke-width="1.5"/>`;
+    }
+  }
+
+  const zeroY=yToPx(0).toFixed(1);
+  const obY=yToPx(OSC_OB_LEVEL).toFixed(1), osY=yToPx(OSC_OS_LEVEL).toFixed(1);
+  const lastOsc=osc[osc.length-1], lastSig=sig[sig.length-1];
+  const state=lastOsc>OSC_OB_LEVEL?'Overbought':lastOsc<OSC_OS_LEVEL?'Oversold':lastOsc>=lastSig?'Bullish':'Bearish';
+  const stateColor=state==='Bullish'||state==='Oversold'?'var(--green)':state==='Bearish'||state==='Overbought'?'var(--red)':'var(--text3)';
+
+  wrap.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div style="font-size:10px;color:var(--text3)">Breadth Oscillator (${tf==='D'?'1 Day':tf+'M'}) · EMA(${smoothLen})/EMA(${signalLen}) · ${times.length} bars</div>
+      <div style="font-size:11px;font-weight:700;color:${stateColor};background:${stateColor}22;padding:2px 8px;border-radius:5px">${state} ${Math.round(lastOsc)}</div>
+    </div>
+    <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">
+      <line x1="${padL}" y1="${obY}" x2="${W-padR}" y2="${obY}" stroke="var(--red)" stroke-opacity="0.3" stroke-dasharray="3,3"/>
+      <line x1="${padL}" y1="${osY}" x2="${W-padR}" y2="${osY}" stroke="var(--green)" stroke-opacity="0.3" stroke-dasharray="3,3"/>
+      <line x1="${padL}" y1="${zeroY}" x2="${W-padR}" y2="${zeroY}" stroke="var(--text3)" stroke-opacity="0.4"/>
+      ${bars}
+      <path d="${sigPath}" fill="none" stroke="#ffa94d" stroke-width="1.3"/>
+      ${markers}
+      <text x="${padL-4}" y="${obY}" text-anchor="end" font-size="8" fill="var(--red)" dy="3">${OSC_OB_LEVEL}</text>
+      <text x="${padL-4}" y="${osY}" text-anchor="end" font-size="8" fill="var(--green)" dy="3">${OSC_OS_LEVEL}</text>
+      <text x="${padL-4}" y="${zeroY}" text-anchor="end" font-size="8" fill="var(--text3)" dy="3">0</text>
+    </svg>
+    <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:2px">Bars = breadth (bull-bear)/total×100, smoothed · Orange = signal line · ○ = reversal in OB/OS zone</div>
+  `;
 }
 
 // ================================================================
