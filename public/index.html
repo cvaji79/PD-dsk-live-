@@ -1072,10 +1072,21 @@ function renderBreadthOscillator(){
   const tf=document.getElementById('rviTf').value;
   const smoothLen=parseInt(document.getElementById('oscSmooth').value)||5;
   const signalLen=parseInt(document.getElementById('oscSignal').value)||9;
-  const {times,osc,sig}=computeBreadthOscillator(tf,smoothLen,signalLen);
-  if(!times.length){ wrap.innerHTML='<div style="font-size:10px;color:var(--text3);text-align:center;padding:8px 0">No overlapping bars yet for this timeframe.</div>'; return; }
+  const full=computeBreadthOscillator(tf,smoothLen,signalLen);
+  if(!full.times.length){ wrap.innerHTML='<div style="font-size:10px;color:var(--text3);text-align:center;padding:8px 0">No overlapping bars yet for this timeframe.</div>'; return; }
 
-  const W=Math.max(320,(wrap.clientWidth||320)), H=170, padL=30, padR=6, padT=8, padB=16;
+  // EMA is computed over the FULL history above (so smoothing/warmup stays
+  // correct), but we only DISPLAY the most recent trading session — showing
+  // all 45 days concatenated was what made the chart look like solid noise
+  // instead of one clean day like the Pine chart's "20th to 21st" view.
+  const lastT=full.times[full.times.length-1];
+  const lastDate=new Date(lastT*1000);
+  const startOfDay=new Date(lastDate.getFullYear(),lastDate.getMonth(),lastDate.getDate(),0,0,0).getTime()/1000;
+  let startIdx=full.times.findIndex(t=>t>=startOfDay);
+  if(startIdx<0) startIdx=Math.max(0,full.times.length-200);
+  const times=full.times.slice(startIdx), osc=full.osc.slice(startIdx), sig=full.sig.slice(startIdx);
+
+  const W=Math.max(320,(wrap.clientWidth||320)), H=170, padL=30, padR=6, padT=8, padB=18;
   const plotW=W-padL-padR, plotH=H-padT-padB;
   const yMax=Math.max(100,...osc.map(Math.abs),...sig.map(Math.abs));
   const yToPx=v=>padT+plotH/2-(v/yMax)*(plotH/2);
@@ -1103,6 +1114,16 @@ function renderBreadthOscillator(){
     }
   }
 
+  // Time-of-day x-axis labels (IST), ~5 evenly spaced ticks — like TradingView's 10:00/11:00/12:00 markers
+  let xLabels='';
+  const tickCount=Math.min(6,times.length);
+  for(let k=0;k<tickCount;k++){
+    const i=Math.round(k*(times.length-1)/(tickCount-1||1));
+    const d=new Date(times[i]*1000);
+    const hh=String(d.getHours()).padStart(2,'0'), mm=String(d.getMinutes()).padStart(2,'0');
+    xLabels+=`<text x="${xToPx(i).toFixed(1)}" y="${H-4}" text-anchor="middle" font-size="8" fill="var(--text3)">${hh}:${mm}</text>`;
+  }
+
   const zeroY=yToPx(0).toFixed(1);
   const obY=yToPx(OSC_OB_LEVEL).toFixed(1), osY=yToPx(OSC_OS_LEVEL).toFixed(1);
   const lastOsc=osc[osc.length-1], lastSig=sig[sig.length-1];
@@ -1111,7 +1132,7 @@ function renderBreadthOscillator(){
 
   wrap.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <div style="font-size:10px;color:var(--text3)">Breadth Oscillator (${tf==='D'?'1 Day':tf+'M'}) · EMA(${smoothLen})/EMA(${signalLen}) · ${times.length} bars</div>
+      <div style="font-size:10px;color:var(--text3)">Breadth Oscillator (${tf==='D'?'1 Day':tf+'M'}) · EMA(${smoothLen})/EMA(${signalLen}) · today's session, ${times.length} bars</div>
       <div style="font-size:11px;font-weight:700;color:${stateColor};background:${stateColor}22;padding:2px 8px;border-radius:5px">${state} ${Math.round(lastOsc)}</div>
     </div>
     <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:${H}px;display:block">
@@ -1124,6 +1145,7 @@ function renderBreadthOscillator(){
       <text x="${padL-4}" y="${obY}" text-anchor="end" font-size="8" fill="var(--red)" dy="3">${OSC_OB_LEVEL}</text>
       <text x="${padL-4}" y="${osY}" text-anchor="end" font-size="8" fill="var(--green)" dy="3">${OSC_OS_LEVEL}</text>
       <text x="${padL-4}" y="${zeroY}" text-anchor="end" font-size="8" fill="var(--text3)" dy="3">0</text>
+      ${xLabels}
     </svg>
     <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:2px">Bars = breadth (bull-bear)/total×100, smoothed · Orange = signal line · ○ = reversal in OB/OS zone</div>
   `;
