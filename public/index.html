@@ -830,6 +830,7 @@ function fyersLogout(){
   document.getElementById('sTok').value='';
   document.getElementById('tokBar').style.display='none';
   stopLiveFeed();
+  stopCocLiveFeed();
   if(ST.mode==='live') setMode('paper');
   updLoginBtn(); showToast('Logged out'); closeModal('loginModal');
 }
@@ -1276,6 +1277,8 @@ function populateExpiries(){
 const COC_STEP={NIFTY:50,BANKNIFTY:100,FINNIFTY:50,MIDCPNIFTY:25,SENSEX:100,BANKEX:100};
 const COC_IDX={NIFTY:'NSE:NIFTY50-INDEX',BANKNIFTY:'NSE:NIFTYBANK-INDEX',FINNIFTY:'NSE:FINNIFTY-INDEX',MIDCPNIFTY:'NSE:MIDCPNIFTY-INDEX',SENSEX:'BSE:SENSEX-INDEX',BANKEX:'BSE:BANKEX-INDEX'};
 let cocSniCache={}; // "symbol" -> {date:'YYYY-MM-DD', pdc:number} — PDC is fixed for the whole day, no need to refetch every scan
+let cocLastScan=null; // {baseSymbol,ts,step} from the last completed Scan — reused by the live LTP refresh below
+let cocLiveTimer=null;
 
 function populateCocExpiries(){
   const sym=document.getElementById('cocSym').value;
@@ -1331,6 +1334,7 @@ async function runCocScan(){
     if(d.s==='error') throw new Error(d.message||'error');
     const chain=d.data?.optionsChain||[];
     if(!chain.length) throw new Error('No chain data — market may be closed or expiry mismatch');
+    cocLastScan={baseSymbol,ts,step}; // remembered so the live LTP refresh below doesn't need to re-resolve expiry every tick
     const spot=chain[0]?.ltp||0;
     const atm=Math.round(spot/step)*step;
     const cm={},pm={};
@@ -1390,6 +1394,7 @@ async function runCocScan(){
       await new Promise(res=>setTimeout(res,400)); // pacing to respect Fyers rate limits (150ms was too aggressive and triggered 429s)
     }
     stSt.textContent=`Scan complete — ${sym} ${exp} · ATM ${atm} · Spot ${spot.toFixed(2)}`;
+    startCocLiveFeed(); // scan is a one-time snapshot; this keeps CE/PE LTPs moving afterward
   }catch(e){
     stSt.textContent='⚠️ '+e.message;
     stSt.style.color='var(--red)';
@@ -1421,6 +1426,51 @@ function renderCocTable(){
       <td style="padding:5px;text-align:center;color:var(--text3)">${r.mpTime||'—'}</td>
     </tr>`;
   }).join('');
+}
+
+// ================================================================
+// COC LIVE LTP REFRESH — the Scan button above does a one-time, fairly
+// heavy snapshot (3m candles + PDC per strike, paced ~400ms apart). It was
+// never followed up by anything, so CE/PE prices on the board just froze
+// at whatever they were when Scan last ran, even with a live Fyers feed
+// connected elsewhere in the app. This runs a much cheaper poll — one
+// option-chain snapshot request — every few seconds while the COC tab is
+// open, and only touches ceLtp/peLtp (leaves the 3m map/PDC/SNI columns
+// exactly as the last full Scan computed them).
+// ================================================================
+function startCocLiveFeed(){
+  stopCocLiveFeed();
+  cocLiveTimer=setInterval(()=>{
+    if(!document.getElementById('tab-coc').classList.contains('active')){ stopCocLiveFeed(); return; }
+    if(ST.fyToken&&cocLastScan&&cocData.length&&!cocScanning) refreshCocLtp();
+  },4000);
+}
+function stopCocLiveFeed(){ if(cocLiveTimer){ clearInterval(cocLiveTimer); cocLiveTimer=null; } }
+
+async function refreshCocLtp(){
+  try{
+    const auth=FYERS_APP_ID+':'+ST.fyToken;
+    let url='/api/optionchain?symbol='+cocLastScan.baseSymbol+'&strikecount=13';
+    if(cocLastScan.ts) url+='&timestamp='+cocLastScan.ts;
+    const r=await fetchT(url,{headers:{'Authorization':auth}});
+    const d=await r.json();
+    if(d.s==='error') return;
+    const chain=d.data?.optionsChain||[];
+    if(!chain.length) return;
+    const spot=chain[0]?.ltp||0;
+    const cm={},pm={};
+    chain.forEach(x=>{ const t=fyOptType(x); if(t==='CE') cm[x.strike_price]=x; else if(t==='PE') pm[x.strike_price]=x; });
+    cocData.forEach(row=>{
+      const ce=cm[row.strike], pe=pm[row.strike];
+      if(ce?.ltp!=null) row.ceLtp=ce.ltp;
+      if(pe?.ltp!=null) row.peLtp=pe.ltp;
+    });
+    if(spot){
+      const strip=document.getElementById('cocDayStrip');
+      if(strip) strip.innerHTML=strip.innerHTML.replace(/Spot: <b>[^<]*<\/b>/,'Spot: <b>'+spot.toFixed(2)+'</b>');
+    }
+    renderCocTable();
+  }catch(e){ console.warn('COC LTP refresh failed:',e.message); }
 }
 
 // ================================================================
@@ -2578,6 +2628,7 @@ function switchTab(tab,btn){
   if(btn) btn.classList.add('active'); else document.getElementById('nav-'+tab).classList.add('active');
   if(tab==='hist') renderHistory();
   if(tab==='port') renderPortfolio();
+  if(tab==='coc'){ if(ST.fyToken&&cocData.length) startCocLiveFeed(); } else stopCocLiveFeed();
 }
 
 function setMode(m){
