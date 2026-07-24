@@ -227,6 +227,17 @@ canvas.mc{width:100%;height:58px}
         <div class="seg-tab" onclick="setSeg('FUT')" id="seg-FUT">Futures</div>
         <div class="seg-tab" onclick="setSeg('OPT')" id="seg-OPT">Options</div>
       </div>
+      <!-- Default Entry/Exit Setup -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:9px">
+        <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:11px;font-weight:700;color:var(--text)">
+          <input id="fDefaultSetup" type="checkbox" checked style="width:15px;height:15px;accent-color:var(--blue)"/>
+          ⚡ Default Entry/Exit Setup
+        </label>
+        <div style="font-size:9px;color:var(--text3);margin-top:4px;line-height:1.5">
+          Qty 3 · SL 30 pts · TSL 1 pt · books 2/3 qty at +23 pts, rest runs on TSL.
+          Fills in only when SL/TSL below are left blank — scales to whatever qty you enter.
+        </div>
+      </div>
       <!-- Buy/Sell -->
       <div class="buy-sell">
         <button class="bs-btn buy active" id="btnBuy" onclick="setBuySell('BUY')">BUY</button>
@@ -263,7 +274,7 @@ canvas.mc{width:100%;height:58px}
       <!-- Product & Qty -->
       <div class="form-row">
         <div class="field"><label>Product</label><select id="fProd"><option value="MIS">MIS — Intraday</option><option value="CNC">CNC — Delivery</option><option value="NRML">NRML — CarryFwd</option></select></div>
-        <div class="field"><label>Lots / Qty</label><input id="fQty" value="1" type="number" min="1" oninput="updateOrderSummary()"/></div>
+        <div class="field"><label>Lots / Qty</label><input id="fQty" value="3" type="number" min="1" oninput="updateOrderSummary()"/></div>
       </div>
       <!-- Order type & Price -->
       <div class="form-row">
@@ -277,11 +288,11 @@ canvas.mc{width:100%;height:58px}
       <!-- TGT / SL / TSL -->
       <div class="form-row">
         <div class="field"><label>Target ₹</label><input id="fTgt" placeholder="0 = none" type="number" min="0"/></div>
-        <div class="field"><label>Stoploss ₹</label><input id="fSL" placeholder="0 = none" type="number" min="0"/></div>
+        <div class="field"><label>Stoploss ₹</label><input id="fSL" placeholder="Blank = entry ∓30pts" type="number" min="0"/></div>
       </div>
       <div class="field" style="margin-bottom:8px">
-        <label>Trailing SL (pts) — 0 = off</label>
-        <input id="fTSL" placeholder="e.g. 20" type="number" min="0"/>
+        <label>Trailing SL (pts) — blank = default 3</label>
+        <input id="fTSL" placeholder="e.g. 20 (blank = 3)" type="number" min="0"/>
       </div>
       <!-- Summary -->
       <div id="orderSummary" style="background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:11px;color:var(--text2);margin-bottom:7px;display:none"></div>
@@ -594,6 +605,12 @@ canvas.mc{width:100%;height:58px}
         <input class="ei" id="ePartTsl" placeholder="P.TSL pts (0=off)" type="number" min="0" style="flex:1"/>
         <button onclick="savePartTsl()" style="padding:5px 11px;border-radius:6px;border:1px solid #92400e;background:var(--amber-bg);color:var(--amber);font-size:10px;font-weight:700;cursor:pointer" id="ePartTslBtn">Save</button>
       </div>
+      <div style="font-size:10px;color:var(--text3);margin:9px 0 6px">🎯 Fixed Partial Target — books this qty the instant price is the given points in your favour from entry (not trailing, one-shot).</div>
+      <div style="display:flex;gap:7px;align-items:center">
+        <input class="ei" id="ePartFixQty" placeholder="Qty to exit" type="number" min="1" style="flex:1"/>
+        <input class="ei" id="ePartFixPts" placeholder="Pts (0=off)" type="number" min="0" style="flex:1"/>
+        <button onclick="savePartFix()" style="padding:5px 11px;border-radius:6px;border:1px solid #14532d;background:var(--green-dim);color:var(--green);font-size:10px;font-weight:700;cursor:pointer" id="ePartFixBtn">Save</button>
+      </div>
     </div>
     <div style="margin-bottom:13px">
       <div style="font-size:11px;font-weight:700;color:var(--green);margin-bottom:7px">🎯 Target Price</div>
@@ -630,6 +647,21 @@ canvas.mc{width:100%;height:58px}
 // ================================================================
 // CONSTANTS — Hardcoded Fyers credentials (your trading bot)
 // ================================================================
+// ================================================================
+// DEFAULT ENTRY/EXIT SETUP — applied automatically on BUY/SELL when the
+// "Default Setup" toggle in the Order tab is on and the SL/TSL fields are
+// left blank. SELL just mirrors BUY (all offsets flip direction).
+//   • qty        → 3 (pre-filled in the Qty field, editable per order)
+//   • SL         → entry ∓ 30 points (BUY: entry-30, SELL: entry+30)
+//   • TSL        → 3 points, trails once price moves in your favour
+//   • Partial    → books 2/3 of the qty the instant price is 23 points in
+//                  your favour (fixed, not trailing) — the remaining 1/3
+//                  keeps running under the TSL above.
+// The 2-out-of-3 split scales with whatever qty is actually used (e.g.
+// 6 qty → 4 booked / 2 running), so it isn't hard-locked to qty=3.
+// ================================================================
+const DEFAULT_SETUP = { qty: 3, slPts: 30, tslPts: 1, partialPts: 23, partialRatio: 2/3 };
+
 const FYERS_APP_ID  = '5WESGP23O5-200';
 // FYERS_SECRET intentionally removed — it now lives only as a Render
 // environment variable used inside server.js, never sent to the browser.
@@ -2092,6 +2124,24 @@ async function fetchFreshLtp(fySymbol){
   }catch(e){ return null; }
 }
 
+// Works out the "2 out of every 3" partial-exit qty for the Default Setup,
+// scaled to whatever qty was actually entered (not hard-locked to 3).
+// For OPT/FUT it rounds in whole lots so the booked qty stays a tradeable
+// lot size; for EQ it rounds in shares. Returns 0 if the qty is too small
+// to split (needs at least 2 lots/shares so a runner qty remains).
+function computeDefaultPartialQty(seg,lots,actualQty,ls){
+  if(seg==='EQ'){
+    if(actualQty<2) return 0;
+    let pq=Math.round(actualQty*DEFAULT_SETUP.partialRatio);
+    pq=Math.min(Math.max(pq,1),actualQty-1);
+    return pq;
+  }
+  if(lots<2) return 0;
+  let pl=Math.round(lots*DEFAULT_SETUP.partialRatio);
+  pl=Math.min(Math.max(pl,1),lots-1);
+  return pl*ls;
+}
+
 async function placeOrder(){
   const symRaw=document.getElementById('fSym').value.trim().toUpperCase();
   if(!symRaw){ showToast('Enter a symbol'); return; }
@@ -2156,8 +2206,30 @@ async function placeOrder(){
   const fillP=(ordT==='MARKET'||ordT==='SL-M')?ltp:limitP;
   const trigP=parseFloat(document.getElementById('fTrig').value)||0;
   const target=parseFloat(document.getElementById('fTgt').value)||null;
-  const sl=parseFloat(document.getElementById('fSL').value)||null;
-  const tsl=parseFloat(document.getElementById('fTSL').value)||null;
+  let sl=parseFloat(document.getElementById('fSL').value)||null;
+  let tsl=parseFloat(document.getElementById('fTSL').value)||null;
+  let partFix=null;
+
+  // Default Entry/Exit Setup — only fills in SL/TSL when those fields were
+  // left blank, and never overrides a value the user typed in manually.
+  const useDefaults=document.getElementById('fDefaultSetup').checked;
+  if(useDefaults){
+    const dir=bs==='BUY'?1:-1;
+    if(sl==null) sl=parseFloat((fillP-dir*DEFAULT_SETUP.slPts).toFixed(2));
+    if(tsl==null) tsl=DEFAULT_SETUP.tslPts;
+    const partQty=computeDefaultPartialQty(seg,qty,actualQty,ls);
+    if(partQty>0){
+      partFix={qty:partQty,pts:DEFAULT_SETUP.partialPts,trigP:parseFloat((fillP+dir*DEFAULT_SETUP.partialPts).toFixed(2))};
+    }
+  }
+
+  // TSL gap — the point-cushion the trail preserves as price moves. Kept
+  // equal to whatever the initial SL's distance from entry is (30 by
+  // default), so the trail WALKS that cushion up from the initial SL as
+  // price advances, instead of instantly collapsing it down to just the
+  // TSL points value on the very first favourable tick. Falls back to the
+  // TSL points value itself if no SL was set at all.
+  const tslGap=(tsl!=null)?(sl!=null?Math.abs(fillP-sl):tsl):null;
 
   if((ordT==='SL'||ordT==='SL-M')&&trigP<=0){
     showToast('⚠️ Enter a Trigger price for '+ordT+' orders');
@@ -2173,7 +2245,7 @@ async function placeOrder(){
       showToast('⚠️ Live futures orders are disabled for now — the futures trading symbol isn\'t verified against Fyers\' symbol master yet. Use Equity or Options (via the live Option Chain) for live orders.');
       return;
     }
-    placeLive({fySymbol,displaySymbol:symbol,priceKey,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,ordT,price:fillP,trigPrice:trigP,prod,target,sl,tsl});
+    placeLive({fySymbol,displaySymbol:symbol,priceKey,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,ordT,price:fillP,trigPrice:trigP,prod,target,sl,tsl,tslGap,partFix});
     return;
   }
 
@@ -2186,9 +2258,10 @@ async function placeOrder(){
   ST.orders.push(order);
   const ex=ST.pos.find(p=>p.symbol===symbol&&p.bs===bs&&p.prod===prod);
   if(ex){ const tq=ex.qty+actualQty; ex.avgP=((ex.avgP*ex.qty)+(fillP*actualQty))/tq; ex.qty=tq; if(!ex.fySymbol&&fySymbol) ex.fySymbol=fySymbol; }
-  else ST.pos.push({id:Date.now(),symbol,sym:priceKey,fySymbol,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,prod,avgP:fillP,ltp:fillP,target,sl,tsl,tslHW:fillP,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
+  else ST.pos.push({id:Date.now(),symbol,sym:priceKey,fySymbol,symRaw,seg,bs,qty:actualQty,lots:qty,lotSize:ls,prod,avgP:fillP,ltp:fillP,target,sl,tsl,tslHW:fillP,tslGap,partFix,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
   save(); renderAll();
-  showToast('✅ '+bs+' '+qty+(seg!=='EQ'?' lot':'')+(seg==='OPT'||seg==='FUT'?' ('+actualQty+' qty)':'')+' '+symbol+' @ ₹'+fillP.toFixed(2));
+  const partNote=partFix?(' · auto-partial: '+partFix.qty+' qty @ +'+partFix.pts+'pts'):'';
+  showToast('✅ '+bs+' '+qty+(seg!=='EQ'?' lot':'')+(seg==='OPT'||seg==='FUT'?' ('+actualQty+' qty)':'')+' '+symbol+' @ ₹'+fillP.toFixed(2)+partNote);
 }
 
 async function placeLive(o){
@@ -2208,7 +2281,7 @@ async function placeLive(o){
     ST.orders.push({id:Date.now(),symbol:o.displaySymbol,sym:o.fySymbol,symRaw:o.symRaw,seg:o.seg,bs:o.bs,qty:o.qty,lots:o.lots,lotSize:o.lotSize,prod:o.prod,ordT:o.ordT,price:o.price,target:o.target,sl:o.sl,tsl:o.tsl,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN'),status:'SENT',fyOrderId:d.id});
     const ex=ST.pos.find(p=>p.fySymbol===o.fySymbol&&p.bs===o.bs&&p.prod===o.prod&&p.live);
     if(ex){ const tq=ex.qty+o.qty; ex.avgP=((ex.avgP*ex.qty)+(o.price*o.qty))/tq; ex.qty=tq; }
-    else ST.pos.push({id:Date.now(),symbol:o.displaySymbol,sym:o.fySymbol,fySymbol:o.fySymbol,symRaw:o.symRaw,seg:o.seg,bs:o.bs,qty:o.qty,lots:o.lots,lotSize:o.lotSize,prod:o.prod,avgP:o.price,ltp:o.price,target:o.target,sl:o.sl,tsl:o.tsl,tslHW:o.price,live:true,fyOrderId:d.id,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
+    else ST.pos.push({id:Date.now(),symbol:o.displaySymbol,sym:o.fySymbol,fySymbol:o.fySymbol,symRaw:o.symRaw,seg:o.seg,bs:o.bs,qty:o.qty,lots:o.lots,lotSize:o.lotSize,prod:o.prod,avgP:o.price,ltp:o.price,target:o.target,sl:o.sl,tsl:o.tsl,tslHW:o.price,tslGap:o.tslGap||null,partFix:o.partFix||null,live:true,fyOrderId:d.id,time:new Date().toISOString(),date:new Date().toLocaleDateString('en-IN')});
     ST.prices[o.fySymbol]=o.price;
     save(); renderAll();
     syncFyersPositions();
@@ -2228,6 +2301,8 @@ function openEdit(id){
   document.getElementById('eTSL').value=p.tsl||'';
   document.getElementById('ePartQty').value='';
   document.getElementById('ePartTsl').value=p.partTsl?p.partTsl.pts:'';
+  document.getElementById('ePartFixQty').value=p.partFix?p.partFix.qty:'';
+  document.getElementById('ePartFixPts').value=p.partFix?p.partFix.pts:'';
   document.getElementById('ePartHint').textContent='Total open: '+p.qty+' qty — enter less than that to book profit and keep the rest running with the same Target/SL/TSL.';
   document.getElementById('editCloseBtn').onclick=()=>{ closeModal('editModal'); closePos(id); };
   updEditVals(p);
@@ -2244,8 +2319,9 @@ function updEditVals(p){
     '<strong style="color:var(--text)">Current:</strong><br>'+
     '🎯 Target: '+(p.target?'₹'+p.target:'Not set')+'<br>'+
     '🛑 Stoploss: '+(p.sl?'₹'+p.sl:'Not set')+'<br>'+
-    '📉 Trailing SL: '+(p.tsl?p.tsl+' pts':'Off')+'<br>'+
+    '📉 Trailing SL: '+(p.tsl?p.tsl+' pt steps (gap '+(p.tslGap!=null?p.tslGap:p.tsl)+' pts)':'Off')+'<br>'+
     '✂️ Partial TSL: '+(p.partTsl?p.partTsl.qty+' qty @ '+p.partTsl.pts+' pts':'Off')+'<br>'+
+    '🎯 Fixed Partial: '+(p.partFix?p.partFix.qty+' qty @ +'+p.partFix.pts+' pts (trig ₹'+p.partFix.trigP.toFixed(2)+')':'Off')+'<br>'+
     '💰 LTP: ₹'+ltp.toFixed(2)+'  P&L: <span style="color:'+(pnl>=0?'var(--green)':'var(--red)')+'">'+( pnl>=0?'+':'-')+fmt(pnl)+'</span>';
 }
 
@@ -2253,11 +2329,19 @@ function saveEdit(field,action){
   const p=ST.pos.find(x=>x.id===editId);
   if(!p) return;
   const idMap={target:'eTgt',sl:'eSL',tsl:'eTSL'};
-  if(action==='rm'){ p[field]=null; if(field==='tsl') p.tslHW=null; }
+  if(action==='rm'){ p[field]=null; if(field==='tsl'){ p.tslHW=null; p.tslGap=null; } }
   else{
     const val=parseFloat(document.getElementById(idMap[field]).value);
     if(isNaN(val)||val<0){ showToast('Enter valid value'); return; }
-    p[field]=val; if(field==='tsl') p.tslHW=p.ltp||ST.prices[p.sym];
+    p[field]=val;
+    if(field==='tsl'){
+      const curLtp=p.ltp||ST.prices[p.sym];
+      p.tslHW=curLtp;
+      // Preserve whatever cushion the current SL already has (so the trail
+      // walks that gap up rather than instantly collapsing to `val` points);
+      // falls back to `val` itself if no SL is set on the position.
+      p.tslGap=(p.sl!=null)?Math.abs(curLtp-p.sl):val;
+    }
   }
   save(); updEditVals(p); renderPositions();
   const labels={target:'🎯 Target',sl:'🛑 Stoploss',tsl:'📉 TSL'};
@@ -2288,6 +2372,33 @@ function savePartTsl(){
   p.partTsl={qty,pts,hw:p.ltp||ST.prices[p.sym]};
   save(); updEditVals(p);
   showToast('✂️ Partial TSL armed: '+qty+' qty, '+pts+' pts trail');
+}
+
+// ================================================================
+// FIXED PARTIAL TARGET — books a fixed qty the instant price is the set
+// points in your favour from entry. Unlike Partial TSL, this does not
+// trail a peak; it's a plain one-shot profit target on part of the qty.
+// The remainder keeps running under whatever SL/TSL is already set.
+// ================================================================
+function savePartFix(){
+  const p=ST.pos.find(x=>x.id===editId);
+  if(!p||p.closing){ showToast('Position not available'); return; }
+  const pts=parseFloat(document.getElementById('ePartFixPts').value);
+  if(!pts||pts<=0){
+    p.partFix=null; save(); updEditVals(p);
+    showToast('🎯 Fixed Partial Target off');
+    return;
+  }
+  const qty=parseInt(document.getElementById('ePartFixQty').value);
+  if(!qty||qty<=0||qty>=p.qty){
+    showToast('Enter a valid partial qty above first — less than '+p.qty);
+    return;
+  }
+  const dir=p.bs==='BUY'?1:-1;
+  const trigP=parseFloat((p.avgP+dir*pts).toFixed(2));
+  p.partFix={qty,pts,trigP};
+  save(); updEditVals(p);
+  showToast('🎯 Fixed Partial Target armed: '+qty+' qty @ +'+pts+' pts (₹'+trigP.toFixed(2)+')');
 }
 
 // ================================================================
@@ -2398,14 +2509,25 @@ function checkSLTgt(){
     if(p.closing) return;
     const ltp=p.ltp||ST.prices[p.sym];
     const m=p.bs==='BUY'?1:-1;
-    // Trailing SL
+    // Trailing SL — preserves the ORIGINAL point-gap between entry and the
+    // initial SL (e.g. 30), and walks that gap up in steps of `tsl` points
+    // (e.g. 1) as price moves favourably. So for a 130 CE buy with SL 100
+    // (30-pt gap) and TSL 1: as price ticks 130→131→132…, the SL walks
+    // 100→101→102… in lockstep — it never jumps straight to (peak - tsl),
+    // which would instantly throw away the 30-pt cushion on the very first
+    // favourable tick.
     if(p.tsl&&p.tsl>0){
       if(!p.tslHW) p.tslHW=ltp;
-      if((m===1&&ltp>p.tslHW)||(m===-1&&ltp<p.tslHW)){
-        p.tslHW=ltp;
-        const newSL=m===1?(ltp-p.tsl):(ltp+p.tsl);
-        if(!p.sl||(m===1&&newSL>p.sl)||(m===-1&&newSL<p.sl)){
-          p.sl=parseFloat(newSL.toFixed(2)); save();
+      if((m===1&&ltp>p.tslHW)||(m===-1&&ltp<p.tslHW)) p.tslHW=ltp;
+      const gap=(p.tslGap!=null)?p.tslGap:p.tsl; // fallback for older saved positions
+      const favMove=m===1?(p.tslHW-p.avgP):(p.avgP-p.tslHW); // total favourable move from entry
+      const steps=Math.floor(favMove/p.tsl);
+      if(steps>0){
+        const walked=steps*p.tsl; // cushion-preserving distance the SL has earned so far
+        const newSL=m===1?(p.avgP-gap+walked):(p.avgP+gap-walked);
+        const rounded=parseFloat(newSL.toFixed(2));
+        if(!p.sl||(m===1&&rounded>p.sl)||(m===-1&&rounded<p.sl)){
+          p.sl=rounded; save();
         }
       }
     }
@@ -2426,6 +2548,20 @@ function checkSLTgt(){
         const qty=p.partTsl.qty;
         p.partTsl=null; // one-shot — turns itself off once fired
         showToast('✂️ Partial TSL hit: booking '+qty+' qty of '+p.symbol+' @₹'+ltp.toFixed(2));
+        autoPartialExit(p,qty);
+      }
+    }
+    // Fixed Partial Target (Default Setup / manual) — books the earmarked
+    // qty the instant price is the set points in your favour from entry.
+    // Unlike Partial TSL above, this does NOT trail a peak — it's a plain
+    // one-shot profit target on part of the qty. The remainder keeps
+    // running under the position's normal SL/TSL, untouched.
+    if(p.partFix&&p.partFix.qty>0&&p.partFix.qty<p.qty){
+      const trig=p.partFix.trigP;
+      if((m===1&&ltp>=trig)||(m===-1&&ltp<=trig)){
+        const qty=p.partFix.qty;
+        p.partFix=null; // one-shot — turns itself off once fired
+        showToast('🎯 Partial target hit: booking '+qty+' qty of '+p.symbol+' @₹'+ltp.toFixed(2)+' — rest runs on TSL');
         autoPartialExit(p,qty);
       }
     }
