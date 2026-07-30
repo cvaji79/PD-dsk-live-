@@ -1378,8 +1378,20 @@ async function runCocScan(){
           const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
           const n=Math.min(ce3.length,pe3.length);
           for(let i=n-1;i>=0;i--){
+            // lo/hi here = the OVERLAP between the CE and PE candle's ranges
+            // (used only to find the candle where they "met" and to compute
+            // MAP = the overlap's midpoint). MPH/MPL are a separate thing —
+            // the merged (CE∪PE) high/low of that SAME candle — so they must
+            // be taken from ce3[i]/pe3[i] directly, not from lo/hi.
             const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
-            if(lo<=hi){ row.map=(lo+hi)/2; row.mph=hi; row.mpl=lo; row.mpTimestamp=ce3[i].t; row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5); break; }
+            if(lo<=hi){
+              row.map=(lo+hi)/2;
+              row.mph=Math.max(ce3[i].h,pe3[i].h);
+              row.mpl=Math.min(ce3[i].l,pe3[i].l);
+              row.mpTimestamp=ce3[i].t;
+              row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5);
+              break;
+            }
           }
         }
         if(ceOtm?.symbol && peOtm?.symbol){
@@ -2391,6 +2403,17 @@ function saveEdit(field,action){
       // walks that gap up rather than instantly collapsing to `val` points);
       // falls back to `val` itself if no SL is set on the position.
       p.tslGap=(p.sl!=null)?Math.abs(curLtp-p.sl):val;
+    } else if(field==='sl'&&p.tsl>0){
+      // SL edited by hand while a trail is already running (e.g. you
+      // manually tighten it up ahead of where the trail has walked to).
+      // Re-anchor the gap to THIS new value at the current peak, so the
+      // trail carries on from here — without this, the old gap keeps
+      // computing from the original entry offset and can lag far behind
+      // a manually-tightened SL, effectively freezing it until price
+      // moves enough for the untouched formula to catch back up.
+      const curLtp=p.ltp||ST.prices[p.sym]||val;
+      if(p.tslHW==null||(p.bs==='BUY'&&curLtp>p.tslHW)||(p.bs==='SELL'&&curLtp<p.tslHW)) p.tslHW=curLtp;
+      p.tslGap=Math.abs(p.tslHW-val);
     }
   }
   save(); updEditVals(p); renderPositions();
