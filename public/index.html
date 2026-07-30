@@ -2143,9 +2143,17 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
   if(relHover!=null && candles[relHover]){
     const c=candles[relHover];
     const x=padX+relHover*cw+cw/2;
+    const y=yOf(c.c);
     ctx.strokeStyle='rgba(255,255,255,.45)'; ctx.lineWidth=1; ctx.setLineDash([3,3]);
+    // vertical line
     ctx.beginPath(); ctx.moveTo(x,padTop); ctx.lineTo(x,h-padBottom); ctx.stroke();
+    // horizontal line, at this candle's close
+    ctx.beginPath(); ctx.moveTo(padX,y); ctx.lineTo(w-padRight,y); ctx.stroke();
     ctx.setLineDash([]);
+    // price tag on the right axis where the horizontal line meets it
+    ctx.fillStyle='rgba(255,255,255,.85)'; ctx.fillRect(w-padRight,y-6,padRight,12);
+    ctx.fillStyle='#0a0e1a'; ctx.font='9px sans-serif'; ctx.textAlign='left';
+    ctx.fillText(c.c.toFixed(1), w-padRight+2, y+3);
     const label=new Date(c.t*1000).toTimeString().slice(0,5)+'  O'+c.o.toFixed(1)+' H'+c.h.toFixed(1)+' L'+c.l.toFixed(1)+' C'+c.c.toFixed(1);
     ctx.font='9px sans-serif';
     const tw=ctx.measureText(label).width;
