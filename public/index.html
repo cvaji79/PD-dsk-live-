@@ -334,6 +334,33 @@ canvas.mc{width:100%;height:58px}
       </div>
       <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">MAP = last CE/PE meeting price (3m candle) · MPH/MPL = that candle's merged high/low · SNI = one-strike-OTM CE+PE prev-day-close average, fixed for the day · Green = LTP&gt;SNI · Red = LTP&lt;SNI (both CE &amp; PE)</div>
     </div>
+
+    <!-- COC ENTRY SIGNALS — CE/PE breakout of the shared MAP/MPH/MPL box -->
+    <div class="card" style="padding:9px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+        <div style="font-size:13px;font-weight:700;color:var(--amber)">📡 Entry Signals</div>
+        <button onclick="toggleCocSig()" id="cocSigBtn" style="padding:6px 12px;border-radius:7px;border:1px solid var(--amber);background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:700;cursor:pointer">▶ Start Signals</button>
+      </div>
+      <div style="font-size:9px;color:var(--text3);margin-bottom:7px">
+        CE: candle close &gt; MPH &amp; &gt; CE VWAP · PE: candle close &gt; MPH &amp; &gt; PE VWAP · box (MPH−MPL) &lt; 25pts · SL = MPL · TSL 1pt-for-1pt · partial 60% qty @ +18pts, balance rides TSL. Uses the current ATM strike's latest formed box.
+      </div>
+      <div id="cocSigSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Stopped. Tap Start to arm.</div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:10px;white-space:nowrap" id="cocSigTbl">
+          <thead><tr style="border-bottom:1px solid var(--border);color:var(--text3)">
+            <th style="padding:5px;text-align:left">Time</th>
+            <th style="padding:5px">Entry</th>
+            <th style="padding:5px">Strike</th>
+            <th style="padding:5px">Entry Pt</th>
+            <th style="padding:5px">Initial SL</th>
+            <th style="padding:5px">Partial (pt · qty)</th>
+            <th style="padding:5px">TSL Exit (pt · qty)</th>
+            <th style="padding:5px">Total P&amp;L</th>
+          </tr></thead>
+          <tbody id="cocSigBody"><tr><td colspan="8" style="padding:14px;color:var(--text3);text-align:center">No signals yet — Start to arm</td></tr></tbody>
+        </table>
+      </div>
+    </div>
   </div>
 
   <!-- OI TRACKER TAB -->
@@ -987,6 +1014,27 @@ function resampleCandles(oneMin,everyN){
   return order.map(t=>buckets[t]);
 }
 
+// Session-anchored VWAP — cumulative (typical price × volume) / cumulative
+// volume, resetting at every new trading day so multi-day chart history
+// (3D/7D) doesn't bleed yesterday's volume into today's VWAP.
+function calcVwapSeries(candles){
+  let cumPV=0,cumV=0,curDay=null;
+  return candles.map(c=>{
+    const day=new Date(c.t*1000).toDateString();
+    if(day!==curDay){ curDay=day; cumPV=0; cumV=0; }
+    const tp=(c.h+c.l+c.c)/3, v=c.v||0;
+    cumPV+=tp*v; cumV+=v;
+    return cumV?cumPV/cumV:null;
+  });
+}
+// VWAP value as of (last known at-or-before) a given 1m timestamp — used to
+// align a 1m-built VWAP series to a coarser (e.g. 3m) candle's close time.
+function vwapAsOf(oneMin,vwapSeries,t){
+  let best=null;
+  for(let i=0;i<oneMin.length;i++){ if(oneMin[i].t<=t) best=vwapSeries[i]; else break; }
+  return best;
+}
+
 async function fetchHistory(fySymbol,resolution,rangeFrom,rangeTo,retries=2){
   const auth=FYERS_APP_ID+':'+ST.fyToken;
   const url=`/api/history?symbol=${encodeURIComponent(fySymbol)}&resolution=${resolution}&date_format=1&range_from=${rangeFrom}&range_to=${rangeTo}&cont_flag=1`;
@@ -1486,6 +1534,173 @@ async function refreshCocLtp(){
 }
 
 // ================================================================
+// COC ENTRY SIGNALS — CE/PE breakout of the shared MAP/MPH/MPL box
+// Box (MAP/MPH/MPL) = the latest CE∩PE 3m-candle overlap for the CURRENT
+// ATM strike (recomputed every tick, so it always uses the freshest box —
+// and the strike itself can shift as spot moves, same as the image).
+//   Entry CE: CE 3m close > MPH  &  CE close > CE VWAP  &  (MPH-MPL) < boxRange -> BUY CE
+//   Entry PE: PE 3m close > MPH  &  PE close > PE VWAP  &  (MPH-MPL) < boxRange -> BUY PE
+// Both share the SAME box; SL = MPL for both (that's what's in the sheet —
+// MPH/MPL is a shared price zone where CE & PE ranges intersected, so PE's
+// breakout is measured against that same zone, not a separate PE-only box).
+// TSL: once price moves 1pt favorable, SL trails 1pt-for-1pt (ratchet only).
+// Partial: partialPct of qty booked at +partialPts, balance rides the TSL.
+// Only one trade open at a time; a new signal is ignored while one is open.
+// ================================================================
+const COC_SIG_CFG={qtyLots:10, boxRange:25, partialPts:18, partialPct:0.6, tslStep:1, pollMs:20000};
+let cocSig={running:false,timer:null,lastBarT:{CE:null,PE:null},active:null,log:[]};
+
+// Resolves the CE/PE contracts currently at ATM for the symbol/expiry selected in COC
+async function getAtmContracts(sym){
+  const auth=FYERS_APP_ID+':'+ST.fyToken;
+  const step=COC_STEP[sym]||50;
+  const baseSymbol=COC_IDX[sym]||COC_IDX.NIFTY;
+  const exp=document.getElementById('cocExp').value;
+  if(!exp) return null;
+  const wantDate=expiryStrToDDMMYYYY(exp);
+  const rList=await fetchT('/api/optionchain?symbol='+baseSymbol+'&strikecount=1',{headers:{'Authorization':auth}});
+  const dList=await rList.json();
+  if(dList.s==='error') return null;
+  const match=(dList.data?.expiryData||[]).find(e=>e.date===wantDate);
+  const ts=match?match.expiry:'';
+  let url='/api/optionchain?symbol='+baseSymbol+'&strikecount=3';
+  if(ts) url+='&timestamp='+ts;
+  const r=await fetchT(url,{headers:{'Authorization':auth}});
+  const d=await r.json();
+  if(d.s==='error') return null;
+  const chain=d.data?.optionsChain||[];
+  if(!chain.length) return null;
+  const spot=chain[0]?.ltp||0;
+  const atm=Math.round(spot/step)*step;
+  let ce=null,pe=null;
+  chain.forEach(x=>{ if(x.strike_price===atm){ const t=fyOptType(x); if(t==='CE') ce=x; else if(t==='PE') pe=x; } });
+  if(!ce||!pe) return null;
+  return {atm,ce,pe};
+}
+
+async function cocSigTick(){
+  if(!ST.fyToken||cocScanning) return;
+  const sym=document.getElementById('cocSym').value;
+  const today=new Date();
+  const stSt=document.getElementById('cocSigSt');
+  try{
+    const atmC=await getAtmContracts(sym);
+    if(!atmC){ if(stSt) stSt.textContent='Waiting for chain data…'; return; }
+    const {atm,ce,pe}=atmC;
+    const ce1m=await fetchHistory(ce.symbol,'1',ymd(today),ymd(today));
+    const pe1m=await fetchHistory(pe.symbol,'1',ymd(today),ymd(today));
+    if(ce1m.length<3||pe1m.length<3){ if(stSt) stSt.textContent='Waiting for enough candles…'; return; }
+    const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
+    const ceVwapSeries=calcVwapSeries(ce1m), peVwapSeries=calcVwapSeries(pe1m);
+
+    // Latest shared box — newest 3m candle where CE/PE ranges overlapped
+    const n=Math.min(ce3.length,pe3.length);
+    let mph=null,mpl=null;
+    for(let i=n-1;i>=0;i--){
+      const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
+      if(lo<=hi){ mph=Math.max(ce3[i].h,pe3[i].h); mpl=Math.min(ce3[i].l,pe3[i].l); break; }
+    }
+    const ceLast=ce3[ce3.length-1], peLast=pe3[pe3.length-1];
+    const ceVwapNow=vwapAsOf(ce1m,ceVwapSeries,ceLast.t+119);
+    const peVwapNow=vwapAsOf(pe1m,peVwapSeries,peLast.t+119);
+    const ceLtp=ce.ltp, peLtp=pe.ltp;
+
+    if(cocSig.active){
+      manageCocSigTrade(cocSig.active,ceLtp,peLtp);
+      if(stSt) stSt.textContent=`Live: ${cocSig.active.side} ${cocSig.active.strike} @ ${cocSig.active.entry.toFixed(1)} · SL ${cocSig.active.sl.toFixed(1)} · LTP ${(cocSig.active.side==='CE'?ceLtp:peLtp).toFixed(1)}`;
+    } else if(mph!=null && mpl!=null && (mph-mpl)<COC_SIG_CFG.boxRange){
+      // only act once per newly-closed candle per side, so a signal doesn't refire every poll
+      if(ceLast.c>mph && ceVwapNow!=null && ceLast.c>ceVwapNow && cocSig.lastBarT.CE!==ceLast.t){
+        cocSig.lastBarT.CE=ceLast.t;
+        openCocSigTrade('CE',atm,ceLtp,mpl);
+      } else if(peLast.c>mph && peVwapNow!=null && peLast.c>peVwapNow && cocSig.lastBarT.PE!==peLast.t){
+        cocSig.lastBarT.PE=peLast.t;
+        openCocSigTrade('PE',atm,peLtp,mpl);
+      } else if(stSt) stSt.textContent=`Armed · watching ATM ${atm} · box ${mpl.toFixed(1)}–${mph.toFixed(1)}`;
+    } else if(stSt) stSt.textContent=`Armed · watching ATM ${atm} · no valid box yet`;
+    renderCocSigTable();
+  }catch(e){ console.warn('COC signal tick failed:',e.message); if(stSt) stSt.textContent='⚠️ '+e.message; }
+}
+
+function openCocSigTrade(side,strike,entryPrice,initialSl){
+  const sym=document.getElementById('cocSym').value;
+  const lots=COC_SIG_CFG.qtyLots;
+  const partialQty=Math.round(lots*COC_SIG_CFG.partialPct);
+  const remainQty=lots-partialQty;
+  cocSig.active={
+    side,strike,entry:entryPrice,initialSl,sl:initialSl,peak:entryPrice,
+    lots,partialQty,remainQty,partialDone:false,partialPrice:null,
+    time:new Date().toTimeString().slice(0,5),lotSize:getLotSize(sym)
+  };
+  showToast(`🎯 COC Signal: BUY ${side} ${strike} @ ₹${entryPrice.toFixed(1)}`);
+}
+
+function manageCocSigTrade(t,ceLtp,peLtp){
+  const ltp=t.side==='CE'?ceLtp:peLtp;
+  if(ltp==null) return;
+  t.peak=Math.max(t.peak,ltp);
+  t.sl=Math.max(t.initialSl, t.initialSl+(t.peak-t.entry)); // 1pt-for-1pt TSL, ratchets up only
+  if(!t.partialDone && ltp>=t.entry+COC_SIG_CFG.partialPts){
+    t.partialDone=true; t.partialPrice=t.entry+COC_SIG_CFG.partialPts;
+  }
+  if(ltp<=t.sl){
+    const exitPrice=t.sl;
+    const pnlPts = t.partialDone
+      ? t.partialQty*(t.partialPrice-t.entry) + t.remainQty*(exitPrice-t.entry)
+      : t.lots*(exitPrice-t.entry);
+    cocSig.log.unshift({
+      time:t.time, side:t.side, strike:t.strike, entry:t.entry, initialSl:t.initialSl,
+      partialPrice:t.partialPrice, partialQty:t.partialDone?t.partialQty:0,
+      exitPrice, exitQty:t.partialDone?t.remainQty:t.lots, totalPnl:pnlPts*t.lotSize
+    });
+    cocSig.active=null;
+  }
+}
+
+function renderCocSigTable(){
+  const body=document.getElementById('cocSigBody');
+  if(!body) return;
+  const rows=[...cocSig.log];
+  if(cocSig.active){
+    const a=cocSig.active;
+    rows.unshift({time:a.time,side:a.side,strike:a.strike,entry:a.entry,initialSl:a.initialSl,
+      partialPrice:a.partialDone?a.partialPrice:null, partialQty:a.partialDone?a.partialQty:0,
+      exitPrice:null, exitQty:null, totalPnl:null, live:true, liveSl:a.sl});
+  }
+  if(!rows.length){ body.innerHTML='<tr><td colspan="8" style="padding:14px;color:var(--text3);text-align:center">No signals yet — Start to arm</td></tr>'; return; }
+  body.innerHTML=rows.map(r=>`<tr style="${r.live?'background:var(--amber-bg)':''}">
+    <td style="padding:5px">${r.time}</td>
+    <td style="padding:5px;font-weight:700;color:${r.side==='CE'?'#60a5fa':'#f87171'}">${r.side}${r.live?' 🔴':''}</td>
+    <td style="padding:5px;text-align:center">${r.strike}</td>
+    <td style="padding:5px;text-align:center">${r.entry.toFixed(1)}</td>
+    <td style="padding:5px;text-align:center">${r.initialSl.toFixed(1)}${r.live?' (now '+r.liveSl.toFixed(1)+')':''}</td>
+    <td style="padding:5px;text-align:center">${r.partialQty?r.partialPrice.toFixed(1)+' · qty '+r.partialQty:'—'}</td>
+    <td style="padding:5px;text-align:center">${r.exitPrice!=null?r.exitPrice.toFixed(1)+' · qty '+r.exitQty:'—'}</td>
+    <td style="padding:5px;text-align:center;font-weight:700;color:${r.totalPnl==null?'var(--text3)':(r.totalPnl>=0?'var(--green)':'var(--red)')}">${r.totalPnl!=null?'₹'+r.totalPnl.toFixed(0):'—'}</td>
+  </tr>`).join('');
+}
+
+function toggleCocSig(){
+  if(!ST.fyToken){ showToast('⚠️ Login to Fyers first'); return; }
+  if(!document.getElementById('cocExp').value){ showToast('⚠️ Pick symbol/expiry in COC first'); return; }
+  cocSig.running=!cocSig.running;
+  const btn=document.getElementById('cocSigBtn');
+  const stSt=document.getElementById('cocSigSt');
+  if(cocSig.running){
+    btn.textContent='⏸ Stop Signals';
+    btn.style.borderColor='var(--red)'; btn.style.color='var(--red)'; btn.style.background='var(--red-bg)';
+    if(stSt) stSt.textContent='Arming…';
+    cocSigTick();
+    cocSig.timer=setInterval(cocSigTick,COC_SIG_CFG.pollMs);
+  } else {
+    btn.textContent='▶ Start Signals';
+    btn.style.borderColor='var(--amber)'; btn.style.color='var(--amber)'; btn.style.background='var(--amber-bg)';
+    if(stSt) stSt.textContent='Stopped. Tap Start to arm.';
+    if(cocSig.timer){ clearInterval(cocSig.timer); cocSig.timer=null; }
+  }
+}
+
+// ================================================================
 // COC PAIR CANDLE CHART POPUP
 // Click a strike in the COC board -> paired CE/PE candlestick chart,
 // 1m/3m/5m/15m/25m/75m timeframes, optional live auto-refresh, and
@@ -1813,10 +2028,14 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
   const len=candlesFull.length;
   const vs=Math.max(0,Math.floor(cocZoom.startFrac*len)), ve=Math.min(len,Math.max(vs+1,Math.ceil(cocZoom.endFrac*len)));
   const candles=candlesFull.slice(vs,ve);
+  // VWAP over the full history (so it resets correctly at each day boundary),
+  // then sliced to the same visible window as the candles.
+  const vwapVis=calcVwapSeries(candlesFull).slice(vs,ve);
   const padX=4, padTop=4, padBottom=14, padRight=38; // padRight reserves room for the y-axis price scale
   let hi=Math.max(...candles.map(c=>c.h)), lo=Math.min(...candles.map(c=>c.l));
-  // Auto-scale to fit the live price / SNI / MPH-MPL too, so nothing sits off-chart
+  // Auto-scale to fit the live price / SNI / MPH-MPL / VWAP too, so nothing sits off-chart
   [liveLtp,sni,mph,mpl].forEach(v=>{ if(v!=null){ hi=Math.max(hi,v); lo=Math.min(lo,v); } });
+  vwapVis.forEach(v=>{ if(v!=null){ hi=Math.max(hi,v); lo=Math.min(lo,v); } });
   const pad10=(hi-lo)*0.06||1;
   hi+=pad10; lo-=pad10;
   const range=(hi-lo)||1;
@@ -1854,6 +2073,24 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     const yO=yOf(c.o), yC=yOf(c.c);
     ctx.fillRect(x-bw/2, Math.min(yO,yC), bw, Math.max(1,Math.abs(yC-yO)));
   });
+
+  // VWAP line — session-anchored volume-weighted avg price of this leg's own candles
+  if(vwapVis.some(v=>v!=null)){
+    ctx.strokeStyle='#22d3ee'; ctx.lineWidth=1.3; ctx.beginPath();
+    let started=false;
+    vwapVis.forEach((v,i)=>{
+      if(v==null) return;
+      const x=padX+i*cw+cw/2, y=yOf(v);
+      if(!started){ ctx.moveTo(x,y); started=true; } else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+    let lastVwap=null;
+    for(let i=vwapVis.length-1;i>=0;i--){ if(vwapVis[i]!=null){ lastVwap=vwapVis[i]; break; } }
+    if(lastVwap!=null){
+      ctx.fillStyle='#22d3ee'; ctx.font='9px sans-serif'; ctx.textAlign='left';
+      ctx.fillText('VWAP '+lastVwap.toFixed(1), padX+2, yOf(lastVwap)-2);
+    }
+  }
 
   // Y-axis price scale — 4 evenly spaced gridlines + labels on the right
   ctx.font='9px sans-serif'; ctx.textAlign='left';
