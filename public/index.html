@@ -332,7 +332,7 @@ canvas.mc{width:100%;height:58px}
           <tbody id="cocBody"><tr><td colspan="8" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr></tbody>
         </table>
       </div>
-      <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">MAP = last CE/PE meeting price (3m candle) · MPH/MPL = that candle's merged high/low · SNI = one-strike-OTM CE+PE prev-day-close average, fixed for the day · Green = LTP&gt;SNI · Red = LTP&lt;SNI (both CE &amp; PE)</div>
+      <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">MAP = last CE/PE meeting price (3m candle) · MPH/MPL = merged (CE+PE) HH/LL over the last 9x3m candles ending at that meeting candle · SNI = one-strike-OTM CE+PE prev-day-close average, fixed for the day · Green = LTP&gt;SNI · Red = LTP&lt;SNI (both CE &amp; PE)</div>
     </div>
 
     <!-- COC ENTRY SIGNALS — CE/PE breakout of the shared MAP/MPH/MPL box -->
@@ -1440,14 +1440,22 @@ async function runCocScan(){
           for(let i=n-1;i>=0;i--){
             // lo/hi here = the OVERLAP between the CE and PE candle's ranges
             // (used only to find the candle where they "met" and to compute
-            // MAP = the overlap's midpoint). MPH/MPL are a separate thing —
-            // the merged (CE∪PE) high/low of that SAME candle — so they must
-            // be taken from ce3[i]/pe3[i] directly, not from lo/hi.
+            // MAP = the overlap's midpoint).
             const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
             if(lo<=hi){
               row.map=(lo+hi)/2;
-              row.mph=Math.max(ce3[i].h,pe3[i].h);
-              row.mpl=Math.min(ce3[i].l,pe3[i].l);
+              // MPH/MPL = the merged (CE∪PE) HH/LL across the last 9 x 3m
+              // candles ENDING at the meeting candle (9 bars = 27min, same
+              // window a "9 bars" measurement on the 3m timeframe covers) —
+              // not just the single meeting candle's own high/low.
+              const winStart=Math.max(0,i-8);
+              let hh=-Infinity, ll=Infinity;
+              for(let k=winStart;k<=i;k++){
+                hh=Math.max(hh,ce3[k].h,pe3[k].h);
+                ll=Math.min(ll,ce3[k].l,pe3[k].l);
+              }
+              row.mph=hh;
+              row.mpl=ll;
               row.mpTimestamp=ce3[i].t;
               row.mpTime=new Date(ce3[i].t*1000).toTimeString().slice(0,5);
               break;
@@ -1587,12 +1595,23 @@ async function cocSigTick(){
       const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
       const ceVwapSeries=calcVwapSeries(ce1m), peVwapSeries=calcVwapSeries(pe1m);
 
-      // Latest shared box for THIS strike — newest 3m candle where its CE/PE ranges overlapped
+      // Latest shared box for THIS strike — newest 3m candle where its CE/PE
+      // ranges overlapped (for MAP), then MPH/MPL = merged HH/LL over the
+      // last 9x3m candles ending there — same rule as the main Scan.
       const n=Math.min(ce3.length,pe3.length);
       let mph=null,mpl=null;
       for(let i=n-1;i>=0;i--){
         const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
-        if(lo<=hi){ mph=Math.max(ce3[i].h,pe3[i].h); mpl=Math.min(ce3[i].l,pe3[i].l); break; }
+        if(lo<=hi){
+          const winStart=Math.max(0,i-8);
+          let hh=-Infinity, ll=Infinity;
+          for(let k=winStart;k<=i;k++){
+            hh=Math.max(hh,ce3[k].h,pe3[k].h);
+            ll=Math.min(ll,ce3[k].l,pe3[k].l);
+          }
+          mph=hh; mpl=ll;
+          break;
+        }
       }
       const ceLast=ce3[ce3.length-1], peLast=pe3[pe3.length-1];
       const ceVwapNow=vwapAsOf(ce1m,ceVwapSeries,ceLast.t+119);
