@@ -342,10 +342,12 @@ canvas.mc{width:100%;height:58px}
         <button onclick="toggleCocSig()" id="cocSigBtn" style="padding:6px 12px;border-radius:7px;border:1px solid var(--amber);background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:700;cursor:pointer">▶ Start Signals</button>
       </div>
       <div style="font-size:9px;color:var(--text3);margin-bottom:7px">
-        BUY: candle close &gt; MPH &amp; &gt; VWAP (that leg) · SL = MPL. SELL: candle close &lt; MPL &amp; &lt; VWAP · SL = MPH — mirror image of BUY.
+        BUY: candle low &lt; MPH &amp; high &gt; MPL (straddles the box) &amp; close &gt; MPH &amp; close &gt; VWAP · SL = MPL.
+        SELL: same straddle &amp; close &lt; MPL &amp; close &lt; VWAP · SL = MPH — mirror image of BUY.
         Box (MPH−MPL) &lt; 25pts · entry−SL capped at 30pts · TSL 1pt-for-1pt · partial 70% qty @ +18pts, balance rides TSL.
         Checks every strike from ATM±5 (the strike list from your last COC Scan) — CE and PE tracked independently, one open trade per leg
         (e.g. CE-24000 BUY and PE-24000 SELL running together is fine; two trades on the same CE-24000 leg at once is not).
+        Every signal is also marked on that strike's chart (🟢 BUY / 🔴 SELL dot on the candle it fired on).
       </div>
       <div id="cocSigSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Stopped. Tap Start to arm.</div>
       <div style="overflow-x:auto">
@@ -1578,7 +1580,7 @@ async function refreshCocLtp(){
 // getting checked independently in the same tick.
 // ================================================================
 const COC_SIG_CFG={qtyLots:10, boxRange:25, partialPts:18, partialPct:0.7, tslStep:1, maxSlPts:30, pollMs:30000, fetchPaceMs:350};
-let cocSig={running:false,timer:null,lastBarT:{},active:{},log:[]}; // active/lastBarT keyed by "strike_TYPE" (e.g. "24000_CE") — CE and PE tracked independently
+let cocSig={running:false,timer:null,lastBarT:{},active:{},log:[],entries:[]}; // active/lastBarT keyed by "strike_TYPE" (e.g. "24000_CE") — CE and PE tracked independently. entries = every signal ever fired, kept for chart markers (green/red dots) regardless of whether that trade is still open or long since closed.
 
 async function cocSigTick(){
   if(!ST.fyToken||cocScanning) return;
@@ -1619,28 +1621,36 @@ async function cocSigTick(){
       const lastBar=cocSig.lastBarT[strike];
       const boxOk=mph!=null && mpl!=null && (mph-mpl)<COC_SIG_CFG.boxRange;
 
-      // CE leg — manage its own open trade, or check BOTH breakout directions
+      // CE leg — manage its own open trade, or check BOTH breakout directions.
+      // straddle = candle's range actually overlaps the box (low < MPH AND
+      // high > MPL) — i.e. it's a genuine breakout/breakdown THROUGH the
+      // box, not some candle already sitting well clear of it. Without this,
+      // close>mph alone would keep re-qualifying every candle of an already-
+      // extended move, which is what was firing far more entries than
+      // expected.
       if(activeCe){
         manageCocSigTrade(activeCe,ceLtp);
       } else if(boxOk && lastBar.CE!==ceLast.t){
-        if(ceLast.c>mph && ceVwapNow!=null && ceLast.c>ceVwapNow){
+        const straddle=ceLast.l<mph && ceLast.h>mpl;
+        if(straddle && ceLast.c>mph && ceVwapNow!=null && ceLast.c>ceVwapNow){
           lastBar.CE=ceLast.t;
-          if((ceLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('CE','BUY',strike,ceLtp,mpl);
-        } else if(ceLast.c<mpl && ceVwapNow!=null && ceLast.c<ceVwapNow){
+          if((ceLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('CE','BUY',strike,ceLtp,mpl,ceLast.t);
+        } else if(straddle && ceLast.c<mpl && ceVwapNow!=null && ceLast.c<ceVwapNow){
           lastBar.CE=ceLast.t;
-          if((mph-ceLtp)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('CE','SELL',strike,ceLtp,mph);
+          if((mph-ceLtp)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('CE','SELL',strike,ceLtp,mph,ceLast.t);
         }
       }
       // PE leg — same rules, entirely independent of what CE is doing on this strike
       if(activePe){
         manageCocSigTrade(activePe,peLtp);
       } else if(boxOk && lastBar.PE!==peLast.t){
-        if(peLast.c>mph && peVwapNow!=null && peLast.c>peVwapNow){
+        const straddle=peLast.l<mph && peLast.h>mpl;
+        if(straddle && peLast.c>mph && peVwapNow!=null && peLast.c>peVwapNow){
           lastBar.PE=peLast.t;
-          if((peLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('PE','BUY',strike,peLtp,mpl);
-        } else if(peLast.c<mpl && peVwapNow!=null && peLast.c<peVwapNow){
+          if((peLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('PE','BUY',strike,peLtp,mpl,peLast.t);
+        } else if(straddle && peLast.c<mpl && peVwapNow!=null && peLast.c<peVwapNow){
           lastBar.PE=peLast.t;
-          if((mph-peLtp)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('PE','SELL',strike,peLtp,mph);
+          if((mph-peLtp)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('PE','SELL',strike,peLtp,mph,peLast.t);
         }
       }
     }catch(e){ console.warn('COC signal check failed for strike',strike,e.message); }
@@ -1652,7 +1662,7 @@ async function cocSigTick(){
   renderCocSigTable();
 }
 
-function openCocSigTrade(type,dir,strike,entryPrice,initialSl){
+function openCocSigTrade(type,dir,strike,entryPrice,initialSl,entryTs){
   const sym=document.getElementById('cocSym').value;
   const lots=COC_SIG_CFG.qtyLots;
   const partialQty=Math.round(lots*COC_SIG_CFG.partialPct);
@@ -1660,9 +1670,10 @@ function openCocSigTrade(type,dir,strike,entryPrice,initialSl){
   const key=strike+'_'+type;
   cocSig.active[key]={
     type,dir,strike,entry:entryPrice,initialSl,sl:initialSl,peak:entryPrice,trough:entryPrice,
-    lots,partialQty,remainQty,partialDone:false,partialPrice:null,
+    lots,partialQty,remainQty,partialDone:false,partialPrice:null,entryTs,
     time:new Date().toTimeString().slice(0,5),lotSize:getLotSize(sym)
   };
+  cocSig.entries.push({type,dir,strike,entryTs,entry:entryPrice});
   showToast(`🎯 COC Signal: ${dir} ${type} ${strike} @ ₹${entryPrice.toFixed(1)}`);
 }
 
@@ -2178,12 +2189,13 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
   const cw=(w-padRight-padX)/candles.length;
   const yOf=v=>h-padBottom-((v-lo)/range)*(h-padTop-padBottom);
 
-  // MPH-MPL highlight band — from the MAP candle through to today's last
-  // candle (today is always appended last in the dataset, so len-1 is it).
-  // Only drawn when today's end is actually within the current zoom view.
-  if(mph!=null && mpl!=null && mpTs!=null && ve>=len){
+  // MPH-MPL highlight band — from the MAP candle through to the right edge
+  // of whatever's currently in view. Draws whenever the meeting point is at
+  // or before the current view's right edge, so it stays visible on any
+  // zoom/pan — not just when today's very last candle happens to be in view.
+  if(mph!=null && mpl!=null && mpTs!=null){
     const mpIdxFull=cocNearestIdx(candlesFull,mpTs);
-    if(mpIdxFull!=null){
+    if(mpIdxFull!=null && mpIdxFull<ve){
       const startRel=Math.max(0,mpIdxFull-vs);
       const startX=padX+startRel*cw;
       const endX=w-padRight;
@@ -2230,6 +2242,25 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     ctx.fillStyle='#f59e0b'; ctx.font='8px sans-serif'; ctx.textAlign='center';
     ctx.fillText('● forming', Math.min(x,w-padRight-24), padTop+8);
   }
+
+  // Entry signal markers — green dot = BUY, red dot = SELL, for THIS leg
+  // (CE dot on the CE panel, PE dot on the PE panel) only, and only when
+  // the signal's candle is inside the currently visible zoom/pan window.
+  // Placed just below the candle's low (BUY) or above its high (SELL) so
+  // the dot doesn't sit on top of the candle body itself.
+  const legType=leg==='ce'?'CE':'PE';
+  cocSig.entries.filter(e=>e.strike===cocChartState.strike && e.type===legType).forEach(e=>{
+    const idx=cocNearestIdx(candlesFull,e.entryTs);
+    if(idx==null||idx<vs||idx>=ve) return;
+    const c=candles[idx-vs];
+    if(!c) return;
+    const x=padX+(idx-vs)*cw+cw/2;
+    const y=e.dir==='BUY'?yOf(c.l)+7:yOf(c.h)-7;
+    ctx.beginPath(); ctx.arc(x,y,3.2,0,Math.PI*2);
+    ctx.fillStyle=e.dir==='BUY'?'#22c55e':'#ef4444';
+    ctx.fill();
+    ctx.lineWidth=0.8; ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.stroke();
+  });
 
   // VWAP line — session-anchored volume-weighted avg price of this leg's own candles
   if(vwapVis.some(v=>v!=null)){
