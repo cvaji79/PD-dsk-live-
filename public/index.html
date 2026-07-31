@@ -342,7 +342,7 @@ canvas.mc{width:100%;height:58px}
         <button onclick="toggleCocSig()" id="cocSigBtn" style="padding:6px 12px;border-radius:7px;border:1px solid var(--amber);background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:700;cursor:pointer">▶ Start Signals</button>
       </div>
       <div style="font-size:9px;color:var(--text3);margin-bottom:7px">
-        CE: candle close &gt; MPH &amp; &gt; CE VWAP · PE: candle close &gt; MPH &amp; &gt; PE VWAP · box (MPH−MPL) &lt; 25pts · SL = MPL · TSL 1pt-for-1pt · partial 70% qty @ +18pts, balance rides TSL. Uses the current ATM strike's latest formed box.
+        CE: candle close &gt; MPH &amp; &gt; CE VWAP · PE: candle close &gt; MPH &amp; &gt; PE VWAP · box (MPH−MPL) &lt; 25pts · SL = MPL · TSL 1pt-for-1pt · partial 70% qty @ +18pts, balance rides TSL. Checks every strike from ATM±5 (the strike list from your last COC Scan) — one open trade per strike.
       </div>
       <div id="cocSigSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Stopped. Tap Start to arm.</div>
       <div style="overflow-x:auto">
@@ -1552,92 +1552,82 @@ async function refreshCocLtp(){
 }
 
 // ================================================================
-// COC ENTRY SIGNALS — CE/PE breakout of the shared MAP/MPH/MPL box
-// Box (MAP/MPH/MPL) = the latest CE∩PE 3m-candle overlap for the CURRENT
-// ATM strike (recomputed every tick, so it always uses the freshest box —
-// and the strike itself can shift as spot moves, same as the image).
+// COC ENTRY SIGNALS — CE/PE breakout of the shared MAP/MPH/MPL box,
+// checked across EVERY strike in the last COC Scan (ATM±5, same 11
+// strikes shown in the table above) — not just the ATM strike. Each
+// strike is evaluated independently, and can carry its own open trade.
+// Box (MAP/MPH/MPL) = the latest CE∩PE 3m-candle overlap for THAT strike
+// (recomputed fresh every tick from that strike's own 1m history).
 //   Entry CE: CE 3m close > MPH  &  CE close > CE VWAP  &  (MPH-MPL) < boxRange -> BUY CE
 //   Entry PE: PE 3m close > MPH  &  PE close > PE VWAP  &  (MPH-MPL) < boxRange -> BUY PE
 // Both share the SAME box; SL = MPL for both (that's what's in the sheet —
 // MPH/MPL is a shared price zone where CE & PE ranges intersected, so PE's
 // breakout is measured against that same zone, not a separate PE-only box).
 // TSL: once price moves 1pt favorable, SL trails 1pt-for-1pt (ratchet only).
-// Partial: partialPct of qty booked at +partialPts, balance rides the TSL.
-// Only one trade open at a time; a new signal is ignored while one is open.
+// Partial: partialPct (70%, confirmed against your worked examples) of qty
+// booked at +partialPts, balance rides the TSL.
+// One open trade PER STRIKE max; a new signal on a strike that already has
+// an open trade is ignored until that trade closes. Other strikes keep
+// getting checked independently in the same tick.
 // ================================================================
-const COC_SIG_CFG={qtyLots:10, boxRange:25, partialPts:18, partialPct:0.7, tslStep:1, pollMs:20000};
-let cocSig={running:false,timer:null,lastBarT:{CE:null,PE:null},active:null,log:[]};
-
-// Resolves the CE/PE contracts currently at ATM for the symbol/expiry selected in COC
-async function getAtmContracts(sym){
-  const auth=FYERS_APP_ID+':'+ST.fyToken;
-  const step=COC_STEP[sym]||50;
-  const baseSymbol=COC_IDX[sym]||COC_IDX.NIFTY;
-  const exp=document.getElementById('cocExp').value;
-  if(!exp) return null;
-  const wantDate=expiryStrToDDMMYYYY(exp);
-  const rList=await fetchT('/api/optionchain?symbol='+baseSymbol+'&strikecount=1',{headers:{'Authorization':auth}});
-  const dList=await rList.json();
-  if(dList.s==='error') return null;
-  const match=(dList.data?.expiryData||[]).find(e=>e.date===wantDate);
-  const ts=match?match.expiry:'';
-  let url='/api/optionchain?symbol='+baseSymbol+'&strikecount=3';
-  if(ts) url+='&timestamp='+ts;
-  const r=await fetchT(url,{headers:{'Authorization':auth}});
-  const d=await r.json();
-  if(d.s==='error') return null;
-  const chain=d.data?.optionsChain||[];
-  if(!chain.length) return null;
-  const spot=chain[0]?.ltp||0;
-  const atm=Math.round(spot/step)*step;
-  let ce=null,pe=null;
-  chain.forEach(x=>{ if(x.strike_price===atm){ const t=fyOptType(x); if(t==='CE') ce=x; else if(t==='PE') pe=x; } });
-  if(!ce||!pe) return null;
-  return {atm,ce,pe};
-}
+const COC_SIG_CFG={qtyLots:10, boxRange:25, partialPts:18, partialPct:0.7, tslStep:1, pollMs:30000, fetchPaceMs:350};
+let cocSig={running:false,timer:null,lastBarT:{},active:{},log:[]}; // active/lastBarT keyed by strike
 
 async function cocSigTick(){
   if(!ST.fyToken||cocScanning) return;
-  const sym=document.getElementById('cocSym').value;
-  const today=new Date();
   const stSt=document.getElementById('cocSigSt');
-  try{
-    const atmC=await getAtmContracts(sym);
-    if(!atmC){ if(stSt) stSt.textContent='Waiting for chain data…'; return; }
-    const {atm,ce,pe}=atmC;
-    const ce1m=await fetchHistory(ce.symbol,'1',ymd(today),ymd(today));
-    const pe1m=await fetchHistory(pe.symbol,'1',ymd(today),ymd(today));
-    if(ce1m.length<3||pe1m.length<3){ if(stSt) stSt.textContent='Waiting for enough candles…'; return; }
-    const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
-    const ceVwapSeries=calcVwapSeries(ce1m), peVwapSeries=calcVwapSeries(pe1m);
+  const strikeRows=cocData.filter(r=>r.ceSymbol&&r.peSymbol);
+  if(!strikeRows.length){
+    if(stSt) stSt.textContent='⚠️ No strikes to check — run a COC Scan first (it resolves the ATM±5 strike list).';
+    return;
+  }
+  const today=new Date();
+  let watched=0;
+  for(const row of strikeRows){
+    const strike=row.strike;
+    try{
+      const ce1m=await fetchHistory(row.ceSymbol,'1',ymd(today),ymd(today));
+      const pe1m=await fetchHistory(row.peSymbol,'1',ymd(today),ymd(today));
+      if(ce1m.length<3||pe1m.length<3) continue;
+      const ce3=resampleCandles(ce1m,3), pe3=resampleCandles(pe1m,3);
+      const ceVwapSeries=calcVwapSeries(ce1m), peVwapSeries=calcVwapSeries(pe1m);
 
-    // Latest shared box — newest 3m candle where CE/PE ranges overlapped
-    const n=Math.min(ce3.length,pe3.length);
-    let mph=null,mpl=null;
-    for(let i=n-1;i>=0;i--){
-      const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
-      if(lo<=hi){ mph=Math.max(ce3[i].h,pe3[i].h); mpl=Math.min(ce3[i].l,pe3[i].l); break; }
-    }
-    const ceLast=ce3[ce3.length-1], peLast=pe3[pe3.length-1];
-    const ceVwapNow=vwapAsOf(ce1m,ceVwapSeries,ceLast.t+119);
-    const peVwapNow=vwapAsOf(pe1m,peVwapSeries,peLast.t+119);
-    const ceLtp=ce.ltp, peLtp=pe.ltp;
+      // Latest shared box for THIS strike — newest 3m candle where its CE/PE ranges overlapped
+      const n=Math.min(ce3.length,pe3.length);
+      let mph=null,mpl=null;
+      for(let i=n-1;i>=0;i--){
+        const lo=Math.max(ce3[i].l,pe3[i].l), hi=Math.min(ce3[i].h,pe3[i].h);
+        if(lo<=hi){ mph=Math.max(ce3[i].h,pe3[i].h); mpl=Math.min(ce3[i].l,pe3[i].l); break; }
+      }
+      const ceLast=ce3[ce3.length-1], peLast=pe3[pe3.length-1];
+      const ceVwapNow=vwapAsOf(ce1m,ceVwapSeries,ceLast.t+119);
+      const peVwapNow=vwapAsOf(pe1m,peVwapSeries,peLast.t+119);
+      const ceLtp=row.ceLtp!=null?row.ceLtp:ceLast.c;
+      const peLtp=row.peLtp!=null?row.peLtp:peLast.c;
+      watched++;
 
-    if(cocSig.active){
-      manageCocSigTrade(cocSig.active,ceLtp,peLtp);
-      if(stSt) stSt.textContent=`Live: ${cocSig.active.side} ${cocSig.active.strike} @ ${cocSig.active.entry.toFixed(1)} · SL ${cocSig.active.sl.toFixed(1)} · LTP ${(cocSig.active.side==='CE'?ceLtp:peLtp).toFixed(1)}`;
-    } else if(mph!=null && mpl!=null && (mph-mpl)<COC_SIG_CFG.boxRange){
-      // only act once per newly-closed candle per side, so a signal doesn't refire every poll
-      if(ceLast.c>mph && ceVwapNow!=null && ceLast.c>ceVwapNow && cocSig.lastBarT.CE!==ceLast.t){
-        cocSig.lastBarT.CE=ceLast.t;
-        openCocSigTrade('CE',atm,ceLtp,mpl);
-      } else if(peLast.c>mph && peVwapNow!=null && peLast.c>peVwapNow && cocSig.lastBarT.PE!==peLast.t){
-        cocSig.lastBarT.PE=peLast.t;
-        openCocSigTrade('PE',atm,peLtp,mpl);
-      } else if(stSt) stSt.textContent=`Armed · watching ATM ${atm} · box ${mpl.toFixed(1)}–${mph.toFixed(1)}`;
-    } else if(stSt) stSt.textContent=`Armed · watching ATM ${atm} · no valid box yet`;
+      const activeHere=cocSig.active[strike];
+      if(activeHere){
+        manageCocSigTrade(activeHere,ceLtp,peLtp);
+      } else if(mph!=null && mpl!=null && (mph-mpl)<COC_SIG_CFG.boxRange){
+        if(!cocSig.lastBarT[strike]) cocSig.lastBarT[strike]={CE:null,PE:null};
+        const lastBar=cocSig.lastBarT[strike];
+        // only act once per newly-closed candle per side, so a signal doesn't refire every poll
+        if(ceLast.c>mph && ceVwapNow!=null && ceLast.c>ceVwapNow && lastBar.CE!==ceLast.t){
+          lastBar.CE=ceLast.t;
+          openCocSigTrade('CE',strike,ceLtp,mpl);
+        } else if(peLast.c>mph && peVwapNow!=null && peLast.c>peVwapNow && lastBar.PE!==peLast.t){
+          lastBar.PE=peLast.t;
+          openCocSigTrade('PE',strike,peLtp,mpl);
+        }
+      }
+    }catch(e){ console.warn('COC signal check failed for strike',strike,e.message); }
     renderCocSigTable();
-  }catch(e){ console.warn('COC signal tick failed:',e.message); if(stSt) stSt.textContent='⚠️ '+e.message; }
+    await new Promise(res=>setTimeout(res,COC_SIG_CFG.fetchPaceMs)); // pace to respect Fyers rate limits, same as the main Scan
+  }
+  const openCount=Object.keys(cocSig.active).length;
+  if(stSt) stSt.textContent=`Armed · watching ${watched} strikes (ATM±5) · ${openCount} open trade${openCount===1?'':'s'}`;
+  renderCocSigTable();
 }
 
 function openCocSigTrade(side,strike,entryPrice,initialSl){
@@ -1645,7 +1635,7 @@ function openCocSigTrade(side,strike,entryPrice,initialSl){
   const lots=COC_SIG_CFG.qtyLots;
   const partialQty=Math.round(lots*COC_SIG_CFG.partialPct);
   const remainQty=lots-partialQty;
-  cocSig.active={
+  cocSig.active[strike]={
     side,strike,entry:entryPrice,initialSl,sl:initialSl,peak:entryPrice,
     lots,partialQty,remainQty,partialDone:false,partialPrice:null,
     time:new Date().toTimeString().slice(0,5),lotSize:getLotSize(sym)
@@ -1671,20 +1661,19 @@ function manageCocSigTrade(t,ceLtp,peLtp){
       partialPrice:t.partialPrice, partialQty:t.partialDone?t.partialQty:0,
       exitPrice, exitQty:t.partialDone?t.remainQty:t.lots, totalPnl:pnlPts*t.lotSize
     });
-    cocSig.active=null;
+    delete cocSig.active[t.strike];
   }
 }
 
 function renderCocSigTable(){
   const body=document.getElementById('cocSigBody');
   if(!body) return;
-  const rows=[...cocSig.log];
-  if(cocSig.active){
-    const a=cocSig.active;
-    rows.unshift({time:a.time,side:a.side,strike:a.strike,entry:a.entry,initialSl:a.initialSl,
+  const liveRows=Object.values(cocSig.active)
+    .sort((a,b)=>a.strike-b.strike)
+    .map(a=>({time:a.time,side:a.side,strike:a.strike,entry:a.entry,initialSl:a.initialSl,
       partialPrice:a.partialDone?a.partialPrice:null, partialQty:a.partialDone?a.partialQty:0,
-      exitPrice:null, exitQty:null, totalPnl:null, live:true, liveSl:a.sl});
-  }
+      exitPrice:null, exitQty:null, totalPnl:null, live:true, liveSl:a.sl}));
+  const rows=[...liveRows,...cocSig.log];
   if(!rows.length){ body.innerHTML='<tr><td colspan="8" style="padding:14px;color:var(--text3);text-align:center">No signals yet — Start to arm</td></tr>'; return; }
   body.innerHTML=rows.map(r=>`<tr style="${r.live?'background:var(--amber-bg)':''}">
     <td style="padding:5px">${r.time}</td>
@@ -1700,7 +1689,7 @@ function renderCocSigTable(){
 
 function toggleCocSig(){
   if(!ST.fyToken){ showToast('⚠️ Login to Fyers first'); return; }
-  if(!document.getElementById('cocExp').value){ showToast('⚠️ Pick symbol/expiry in COC first'); return; }
+  if(!cocData.length){ showToast('⚠️ Run a COC Scan first — signals reuse its ATM±5 strike list'); return; }
   cocSig.running=!cocSig.running;
   const btn=document.getElementById('cocSigBtn');
   const stSt=document.getElementById('cocSigSt');
