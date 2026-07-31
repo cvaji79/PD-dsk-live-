@@ -342,22 +342,28 @@ canvas.mc{width:100%;height:58px}
         <button onclick="toggleCocSig()" id="cocSigBtn" style="padding:6px 12px;border-radius:7px;border:1px solid var(--amber);background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:700;cursor:pointer">▶ Start Signals</button>
       </div>
       <div style="font-size:9px;color:var(--text3);margin-bottom:7px">
-        CE: candle close &gt; MPH &amp; &gt; CE VWAP · PE: candle close &gt; MPH &amp; &gt; PE VWAP · box (MPH−MPL) &lt; 25pts · SL = MPL (entry−SL capped at 30pts) · TSL 1pt-for-1pt · partial 70% qty @ +18pts, balance rides TSL. Checks every strike from ATM±5 (the strike list from your last COC Scan) — one open trade per strike.
+        BUY: candle close &gt; MPH &amp; &gt; VWAP (that leg) · SL = MPL. SELL: candle close &lt; MPL &amp; &lt; VWAP · SL = MPH — mirror image of BUY.
+        Box (MPH−MPL) &lt; 25pts · entry−SL capped at 30pts · TSL 1pt-for-1pt · partial 70% qty @ +18pts, balance rides TSL.
+        Checks every strike from ATM±5 (the strike list from your last COC Scan) — CE and PE tracked independently, one open trade per leg
+        (e.g. CE-24000 BUY and PE-24000 SELL running together is fine; two trades on the same CE-24000 leg at once is not).
       </div>
       <div id="cocSigSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Stopped. Tap Start to arm.</div>
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:10px;white-space:nowrap" id="cocSigTbl">
           <thead><tr style="border-bottom:1px solid var(--border);color:var(--text3)">
             <th style="padding:5px;text-align:left">Time</th>
-            <th style="padding:5px">Entry</th>
+            <th style="padding:5px">Dir</th>
+            <th style="padding:5px">Type</th>
             <th style="padding:5px">Strike</th>
             <th style="padding:5px">Entry Pt</th>
             <th style="padding:5px">Initial SL</th>
+            <th style="padding:5px">Live Qty</th>
+            <th style="padding:5px">Live P&amp;L</th>
             <th style="padding:5px">Partial (pt · qty)</th>
             <th style="padding:5px">TSL Exit (pt · qty)</th>
             <th style="padding:5px">Total P&amp;L</th>
           </tr></thead>
-          <tbody id="cocSigBody"><tr><td colspan="8" style="padding:14px;color:var(--text3);text-align:center">No signals yet — Start to arm</td></tr></tbody>
+          <tbody id="cocSigBody"><tr><td colspan="11" style="padding:14px;color:var(--text3);text-align:center">No signals yet — Start to arm</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1548,6 +1554,7 @@ async function refreshCocLtp(){
       if(strip) strip.innerHTML=strip.innerHTML.replace(/Spot: <b>[^<]*<\/b>/,'Spot: <b>'+spot.toFixed(2)+'</b>');
     }
     renderCocTable();
+    if(cocSig.running) renderCocSigTable();
   }catch(e){ console.warn('COC LTP refresh failed:',e.message); }
 }
 
@@ -1571,7 +1578,7 @@ async function refreshCocLtp(){
 // getting checked independently in the same tick.
 // ================================================================
 const COC_SIG_CFG={qtyLots:10, boxRange:25, partialPts:18, partialPct:0.7, tslStep:1, maxSlPts:30, pollMs:30000, fetchPaceMs:350};
-let cocSig={running:false,timer:null,lastBarT:{},active:{},log:[]}; // active/lastBarT keyed by strike
+let cocSig={running:false,timer:null,lastBarT:{},active:{},log:[]}; // active/lastBarT keyed by "strike_TYPE" (e.g. "24000_CE") — CE and PE tracked independently
 
 async function cocSigTick(){
   if(!ST.fyToken||cocScanning) return;
@@ -1606,21 +1613,34 @@ async function cocSigTick(){
       const peLtp=row.peLtp!=null?row.peLtp:peLast.c;
       watched++;
 
-      const activeHere=cocSig.active[strike];
-      if(activeHere){
-        manageCocSigTrade(activeHere,ceLtp,peLtp);
-      } else if(mph!=null && mpl!=null && (mph-mpl)<COC_SIG_CFG.boxRange){
-        if(!cocSig.lastBarT[strike]) cocSig.lastBarT[strike]={CE:null,PE:null};
-        const lastBar=cocSig.lastBarT[strike];
-        // only act once per newly-closed candle per side, so a signal doesn't refire every poll
-        if(ceLast.c>mph && ceVwapNow!=null && ceLast.c>ceVwapNow && lastBar.CE!==ceLast.t){
+      const activeCe=cocSig.active[strike+'_CE'];
+      const activePe=cocSig.active[strike+'_PE'];
+      if(!cocSig.lastBarT[strike]) cocSig.lastBarT[strike]={CE:null,PE:null};
+      const lastBar=cocSig.lastBarT[strike];
+      const boxOk=mph!=null && mpl!=null && (mph-mpl)<COC_SIG_CFG.boxRange;
+
+      // CE leg — manage its own open trade, or check BOTH breakout directions
+      if(activeCe){
+        manageCocSigTrade(activeCe,ceLtp);
+      } else if(boxOk && lastBar.CE!==ceLast.t){
+        if(ceLast.c>mph && ceVwapNow!=null && ceLast.c>ceVwapNow){
           lastBar.CE=ceLast.t;
-          // entry-to-SL risk cap — entry fills at live LTP (can gap above MPH), so
-          // even a valid box/VWAP breakout is skipped if the resulting SL distance is too wide
-          if((ceLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('CE',strike,ceLtp,mpl);
-        } else if(peLast.c>mph && peVwapNow!=null && peLast.c>peVwapNow && lastBar.PE!==peLast.t){
+          if((ceLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('CE','BUY',strike,ceLtp,mpl);
+        } else if(ceLast.c<mpl && ceVwapNow!=null && ceLast.c<ceVwapNow){
+          lastBar.CE=ceLast.t;
+          if((mph-ceLtp)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('CE','SELL',strike,ceLtp,mph);
+        }
+      }
+      // PE leg — same rules, entirely independent of what CE is doing on this strike
+      if(activePe){
+        manageCocSigTrade(activePe,peLtp);
+      } else if(boxOk && lastBar.PE!==peLast.t){
+        if(peLast.c>mph && peVwapNow!=null && peLast.c>peVwapNow){
           lastBar.PE=peLast.t;
-          if((peLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('PE',strike,peLtp,mpl);
+          if((peLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('PE','BUY',strike,peLtp,mpl);
+        } else if(peLast.c<mpl && peVwapNow!=null && peLast.c<peVwapNow){
+          lastBar.PE=peLast.t;
+          if((mph-peLtp)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('PE','SELL',strike,peLtp,mph);
         }
       }
     }catch(e){ console.warn('COC signal check failed for strike',strike,e.message); }
@@ -1632,57 +1652,99 @@ async function cocSigTick(){
   renderCocSigTable();
 }
 
-function openCocSigTrade(side,strike,entryPrice,initialSl){
+function openCocSigTrade(type,dir,strike,entryPrice,initialSl){
   const sym=document.getElementById('cocSym').value;
   const lots=COC_SIG_CFG.qtyLots;
   const partialQty=Math.round(lots*COC_SIG_CFG.partialPct);
   const remainQty=lots-partialQty;
-  cocSig.active[strike]={
-    side,strike,entry:entryPrice,initialSl,sl:initialSl,peak:entryPrice,
+  const key=strike+'_'+type;
+  cocSig.active[key]={
+    type,dir,strike,entry:entryPrice,initialSl,sl:initialSl,peak:entryPrice,trough:entryPrice,
     lots,partialQty,remainQty,partialDone:false,partialPrice:null,
     time:new Date().toTimeString().slice(0,5),lotSize:getLotSize(sym)
   };
-  showToast(`🎯 COC Signal: BUY ${side} ${strike} @ ₹${entryPrice.toFixed(1)}`);
+  showToast(`🎯 COC Signal: ${dir} ${type} ${strike} @ ₹${entryPrice.toFixed(1)}`);
 }
 
-function manageCocSigTrade(t,ceLtp,peLtp){
-  const ltp=t.side==='CE'?ceLtp:peLtp;
+// dir='BUY': favourable = price rising, SL trails up from initialSl (MPL).
+// dir='SELL': mirror image — favourable = price falling, SL trails down
+// from initialSl (MPH). Both ratchet only (never give back ground) and
+// use the same 1pt-for-1pt step and 70%-qty-at-18pts partial rule.
+function manageCocSigTrade(t,ltp){
   if(ltp==null) return;
-  t.peak=Math.max(t.peak,ltp);
-  t.sl=Math.max(t.initialSl, t.initialSl+(t.peak-t.entry)); // 1pt-for-1pt TSL, ratchets up only
-  if(!t.partialDone && ltp>=t.entry+COC_SIG_CFG.partialPts){
-    t.partialDone=true; t.partialPrice=t.entry+COC_SIG_CFG.partialPts;
+  const key=t.strike+'_'+t.type;
+  if(t.dir==='BUY'){
+    t.peak=Math.max(t.peak,ltp);
+    t.sl=Math.max(t.initialSl, t.initialSl+(t.peak-t.entry));
+    if(!t.partialDone && ltp>=t.entry+COC_SIG_CFG.partialPts){
+      t.partialDone=true; t.partialPrice=t.entry+COC_SIG_CFG.partialPts;
+    }
+    if(ltp<=t.sl){
+      const exitPrice=t.sl;
+      const pnlPts=t.partialDone
+        ? t.partialQty*(t.partialPrice-t.entry)+t.remainQty*(exitPrice-t.entry)
+        : t.lots*(exitPrice-t.entry);
+      closeCocSigTrade(t,key,exitPrice,pnlPts);
+    }
+  } else {
+    t.trough=Math.min(t.trough,ltp);
+    t.sl=Math.min(t.initialSl, t.initialSl-(t.entry-t.trough));
+    if(!t.partialDone && ltp<=t.entry-COC_SIG_CFG.partialPts){
+      t.partialDone=true; t.partialPrice=t.entry-COC_SIG_CFG.partialPts;
+    }
+    if(ltp>=t.sl){
+      const exitPrice=t.sl;
+      const pnlPts=t.partialDone
+        ? t.partialQty*(t.entry-t.partialPrice)+t.remainQty*(t.entry-exitPrice)
+        : t.lots*(t.entry-exitPrice);
+      closeCocSigTrade(t,key,exitPrice,pnlPts);
+    }
   }
-  if(ltp<=t.sl){
-    const exitPrice=t.sl;
-    const pnlPts = t.partialDone
-      ? t.partialQty*(t.partialPrice-t.entry) + t.remainQty*(exitPrice-t.entry)
-      : t.lots*(exitPrice-t.entry);
-    cocSig.log.unshift({
-      time:t.time, side:t.side, strike:t.strike, entry:t.entry, initialSl:t.initialSl,
-      partialPrice:t.partialPrice, partialQty:t.partialDone?t.partialQty:0,
-      exitPrice, exitQty:t.partialDone?t.remainQty:t.lots, totalPnl:pnlPts*t.lotSize
-    });
-    delete cocSig.active[t.strike];
-  }
+}
+
+function closeCocSigTrade(t,key,exitPrice,pnlPts){
+  cocSig.log.unshift({
+    time:t.time, type:t.type, dir:t.dir, strike:t.strike, entry:t.entry, initialSl:t.initialSl,
+    partialPrice:t.partialPrice, partialQty:t.partialDone?t.partialQty:0,
+    exitPrice, exitQty:t.partialDone?t.remainQty:t.lots, totalPnl:pnlPts*t.lotSize
+  });
+  delete cocSig.active[key];
 }
 
 function renderCocSigTable(){
   const body=document.getElementById('cocSigBody');
   if(!body) return;
   const liveRows=Object.values(cocSig.active)
-    .sort((a,b)=>a.strike-b.strike)
-    .map(a=>({time:a.time,side:a.side,strike:a.strike,entry:a.entry,initialSl:a.initialSl,
-      partialPrice:a.partialDone?a.partialPrice:null, partialQty:a.partialDone?a.partialQty:0,
-      exitPrice:null, exitQty:null, totalPnl:null, live:true, liveSl:a.sl}));
+    .sort((a,b)=>a.strike-b.strike||a.type.localeCompare(b.type))
+    .map(a=>{
+      // Live P&L/Qty — read straight from cocData's current ceLtp/peLtp (kept
+      // fresh by the 4s COC LTP refresh loop) so this updates continuously,
+      // not just once every ~30s signal-poll cycle.
+      const row=cocData.find(r=>r.strike===a.strike);
+      const curLtp=row?(a.type==='CE'?row.ceLtp:row.peLtp):null;
+      const liveQty=a.partialDone?a.remainQty:a.lots;
+      let livePnl=null;
+      if(curLtp!=null){
+        const pnlPts=a.dir==='BUY'
+          ? (a.partialDone ? a.partialQty*(a.partialPrice-a.entry)+a.remainQty*(curLtp-a.entry) : a.lots*(curLtp-a.entry))
+          : (a.partialDone ? a.partialQty*(a.entry-a.partialPrice)+a.remainQty*(a.entry-curLtp) : a.lots*(a.entry-curLtp));
+        livePnl=pnlPts*a.lotSize;
+      }
+      return {time:a.time,dir:a.dir,type:a.type,strike:a.strike,entry:a.entry,initialSl:a.initialSl,
+        partialPrice:a.partialDone?a.partialPrice:null, partialQty:a.partialDone?a.partialQty:0,
+        exitPrice:null, exitQty:null, totalPnl:null, live:true, liveSl:a.sl, liveQty, livePnl};
+    });
   const rows=[...liveRows,...cocSig.log];
-  if(!rows.length){ body.innerHTML='<tr><td colspan="8" style="padding:14px;color:var(--text3);text-align:center">No signals yet — Start to arm</td></tr>'; return; }
+  if(!rows.length){ body.innerHTML='<tr><td colspan="11" style="padding:14px;color:var(--text3);text-align:center">No signals yet — Start to arm</td></tr>'; return; }
   body.innerHTML=rows.map(r=>`<tr style="${r.live?'background:var(--amber-bg)':''}">
     <td style="padding:5px">${r.time}</td>
-    <td style="padding:5px;font-weight:700;color:${r.side==='CE'?'#60a5fa':'#f87171'}">${r.side}${r.live?' 🔴':''}</td>
+    <td style="padding:5px;text-align:center;font-weight:700;color:${r.dir==='BUY'?'var(--green)':'var(--red)'}">${r.dir}</td>
+    <td style="padding:5px;text-align:center;font-weight:700;color:${r.type==='CE'?'#60a5fa':'#f87171'}">${r.type}${r.live?' 🔴':''}</td>
     <td style="padding:5px;text-align:center">${r.strike}</td>
     <td style="padding:5px;text-align:center">${r.entry.toFixed(1)}</td>
     <td style="padding:5px;text-align:center">${r.initialSl.toFixed(1)}${r.live?' (now '+r.liveSl.toFixed(1)+')':''}</td>
+    <td style="padding:5px;text-align:center">${r.live?r.liveQty:'—'}</td>
+    <td style="padding:5px;text-align:center;font-weight:700;color:${!r.live||r.livePnl==null?'var(--text3)':(r.livePnl>=0?'var(--green)':'var(--red)')}">${r.live?(r.livePnl!=null?'₹'+r.livePnl.toFixed(0):'…'):'—'}</td>
     <td style="padding:5px;text-align:center">${r.partialQty?r.partialPrice.toFixed(1)+' · qty '+r.partialQty:'—'}</td>
     <td style="padding:5px;text-align:center">${r.exitPrice!=null?r.exitPrice.toFixed(1)+' · qty '+r.exitQty:'—'}</td>
     <td style="padding:5px;text-align:center;font-weight:700;color:${r.totalPnl==null?'var(--text3)':(r.totalPnl>=0?'var(--green)':'var(--red)')}">${r.totalPnl!=null?'₹'+r.totalPnl.toFixed(0):'—'}</td>
