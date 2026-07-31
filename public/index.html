@@ -342,7 +342,7 @@ canvas.mc{width:100%;height:58px}
         <button onclick="toggleCocSig()" id="cocSigBtn" style="padding:6px 12px;border-radius:7px;border:1px solid var(--amber);background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:700;cursor:pointer">▶ Start Signals</button>
       </div>
       <div style="font-size:9px;color:var(--text3);margin-bottom:7px">
-        CE: candle close &gt; MPH &amp; &gt; CE VWAP · PE: candle close &gt; MPH &amp; &gt; PE VWAP · box (MPH−MPL) &lt; 25pts · SL = MPL · TSL 1pt-for-1pt · partial 70% qty @ +18pts, balance rides TSL. Checks every strike from ATM±5 (the strike list from your last COC Scan) — one open trade per strike.
+        CE: candle close &gt; MPH &amp; &gt; CE VWAP · PE: candle close &gt; MPH &amp; &gt; PE VWAP · box (MPH−MPL) &lt; 25pts · SL = MPL (entry−SL capped at 30pts) · TSL 1pt-for-1pt · partial 70% qty @ +18pts, balance rides TSL. Checks every strike from ATM±5 (the strike list from your last COC Scan) — one open trade per strike.
       </div>
       <div id="cocSigSt" style="font-size:10px;color:var(--text3);text-align:center;padding:3px 0 6px">Stopped. Tap Start to arm.</div>
       <div style="overflow-x:auto">
@@ -1570,7 +1570,7 @@ async function refreshCocLtp(){
 // an open trade is ignored until that trade closes. Other strikes keep
 // getting checked independently in the same tick.
 // ================================================================
-const COC_SIG_CFG={qtyLots:10, boxRange:25, partialPts:18, partialPct:0.7, tslStep:1, pollMs:30000, fetchPaceMs:350};
+const COC_SIG_CFG={qtyLots:10, boxRange:25, partialPts:18, partialPct:0.7, tslStep:1, maxSlPts:30, pollMs:30000, fetchPaceMs:350};
 let cocSig={running:false,timer:null,lastBarT:{},active:{},log:[]}; // active/lastBarT keyed by strike
 
 async function cocSigTick(){
@@ -1615,10 +1615,12 @@ async function cocSigTick(){
         // only act once per newly-closed candle per side, so a signal doesn't refire every poll
         if(ceLast.c>mph && ceVwapNow!=null && ceLast.c>ceVwapNow && lastBar.CE!==ceLast.t){
           lastBar.CE=ceLast.t;
-          openCocSigTrade('CE',strike,ceLtp,mpl);
+          // entry-to-SL risk cap — entry fills at live LTP (can gap above MPH), so
+          // even a valid box/VWAP breakout is skipped if the resulting SL distance is too wide
+          if((ceLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('CE',strike,ceLtp,mpl);
         } else if(peLast.c>mph && peVwapNow!=null && peLast.c>peVwapNow && lastBar.PE!==peLast.t){
           lastBar.PE=peLast.t;
-          openCocSigTrade('PE',strike,peLtp,mpl);
+          if((peLtp-mpl)<=COC_SIG_CFG.maxSlPts) openCocSigTrade('PE',strike,peLtp,mpl);
         }
       }
     }catch(e){ console.warn('COC signal check failed for strike',strike,e.message); }
