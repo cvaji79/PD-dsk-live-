@@ -601,26 +601,12 @@ canvas.mc{width:100%;height:58px}
     <div style="font-size:9px;color:var(--text3);margin-top:3px">📱 Pinch to zoom, 2-finger drag to pan (vertical = price axis) · 🖱️ Scroll to zoom, click-drag to pan</div>
   </div>
   <div style="padding:6px 10px;flex:1;min-height:0;display:flex;flex-direction:column">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;flex-shrink:0">
+    <div style="margin-bottom:2px;flex-shrink:0">
       <div style="font-size:11px;color:#60a5fa;font-weight:700" id="cocCeLabel">CE — Call</div>
-      <div style="display:flex;gap:3px">
-        <button onclick="cocYZoomBtn('ce',1.4)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">🔍+</button>
-        <button onclick="cocYZoomBtn('ce',1/1.4)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">🔍−</button>
-        <button onclick="cocYPan('ce',1)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">▲</button>
-        <button onclick="cocYPan('ce',-1)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">▼</button>
-        <button onclick="cocYReset('ce')" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">⤢</button>
-      </div>
     </div>
     <canvas id="cocCeCanvas" style="width:100%;flex:1;min-height:100px;display:block;background:var(--bg);border-radius:6px"></canvas>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin:6px 0 2px;flex-shrink:0">
+    <div style="margin:6px 0 2px;flex-shrink:0">
       <div style="font-size:11px;color:#f87171;font-weight:700" id="cocPeLabel">PE — Put</div>
-      <div style="display:flex;gap:3px">
-        <button onclick="cocYZoomBtn('pe',1.4)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">🔍+</button>
-        <button onclick="cocYZoomBtn('pe',1/1.4)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">🔍−</button>
-        <button onclick="cocYPan('pe',1)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">▲</button>
-        <button onclick="cocYPan('pe',-1)" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">▼</button>
-        <button onclick="cocYReset('pe')" style="padding:2px 7px;border-radius:5px;border:1px solid var(--border);background:var(--bg);color:var(--text2);font-size:10px;cursor:pointer">⤢</button>
-      </div>
     </div>
     <canvas id="cocPeCanvas" style="width:100%;flex:1;min-height:100px;display:block;background:var(--bg);border-radius:6px"></canvas>
   </div>
