@@ -1468,36 +1468,40 @@ async function runCocScan(){
           // CESC/PESC: the most recent green 3m candle (on the CE leg for
           // CESC, on the PE leg for PESC) whose own high/low range contains
           // BOTH the CE VWAP and the PE VWAP.
-          // IMPORTANT: VWAP is computed directly off the 3m candles (same
-          // calcVwapSeries call, same inputs as the chart's own cyan VWAP
-          // line), not rebuilt from 1m data — a 1m-cumulative VWAP and a
-          // 3m-bar VWAP drift apart over the session, which made candles
-          // that visibly straddle the plotted VWAP line fail this check.
-          const ceVwap3=calcVwapSeries(ce3), peVwap3=calcVwapSeries(pe3);
-          for(let i=ce3.length-1;i>=0;i--){
-            const cnd=ce3[i];
-            if(cnd.c<=cnd.o) continue; // must be a green candle
-            const ceV=ceVwap3[i];
-            const peV=vwapAsOf(pe3,peVwap3,cnd.t);
-            if(ceV==null||peV==null) continue;
-            if(ceV>=cnd.l && ceV<=cnd.h && peV>=cnd.l && peV<=cnd.h){
-              row.cescTimestamp=cnd.t;
-              row.cescTime=new Date(cnd.t*1000).toTimeString().slice(0,5);
-              break;
+          // VWAP is computed directly off the 3m candles (same calcVwapSeries
+          // call, same inputs as the chart's own cyan VWAP line).
+          // Wrapped in its OWN try/catch (separate from MAP/SNI above) so a
+          // problem here can never silently blank out MAP/MPH/MPL/SNI too —
+          // and logs a diagnostic trace either way so it's checkable in
+          // DevTools console (F12) if it still doesn't fire.
+          try{
+            const ceVwap3=calcVwapSeries(ce3), peVwap3=calcVwapSeries(pe3);
+            for(let i=ce3.length-1;i>=0;i--){
+              const cnd=ce3[i];
+              if(cnd.c<=cnd.o) continue; // must be a green candle
+              const ceV=ceVwap3[i];
+              const peV=vwapAsOf(pe3,peVwap3,cnd.t);
+              if(ceV==null||peV==null) continue;
+              if(ceV>=cnd.l && ceV<=cnd.h && peV>=cnd.l && peV<=cnd.h){
+                row.cescTimestamp=cnd.t;
+                row.cescTime=new Date(cnd.t*1000).toTimeString().slice(0,5);
+                break;
+              }
             }
-          }
-          for(let i=pe3.length-1;i>=0;i--){
-            const cnd=pe3[i];
-            if(cnd.c<=cnd.o) continue; // must be a green candle
-            const peV=peVwap3[i];
-            const ceV=vwapAsOf(ce3,ceVwap3,cnd.t);
-            if(ceV==null||peV==null) continue;
-            if(ceV>=cnd.l && ceV<=cnd.h && peV>=cnd.l && peV<=cnd.h){
-              row.pescTimestamp=cnd.t;
-              row.pescTime=new Date(cnd.t*1000).toTimeString().slice(0,5);
-              break;
+            for(let i=pe3.length-1;i>=0;i--){
+              const cnd=pe3[i];
+              if(cnd.c<=cnd.o) continue; // must be a green candle
+              const peV=peVwap3[i];
+              const ceV=vwapAsOf(ce3,ceVwap3,cnd.t);
+              if(ceV==null||peV==null) continue;
+              if(ceV>=cnd.l && ceV<=cnd.h && peV>=cnd.l && peV<=cnd.h){
+                row.pescTimestamp=cnd.t;
+                row.pescTime=new Date(cnd.t*1000).toTimeString().slice(0,5);
+                break;
+              }
             }
-          }
+            console.log(`COC SC[${s}] ce3=${ce3.length} pe3=${pe3.length} cesc=${row.cescTime||'none'} pesc=${row.pescTime||'none'}`);
+          }catch(scErr){ console.warn('COC signal-candle calc failed for',s,scErr.message); }
         }
         if(ceOtm?.symbol && peOtm?.symbol){
           const cePdc=await getCachedPdc(ceOtm.symbol,pdcFrom,today);
@@ -2262,19 +2266,12 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
   const lastFullT=candlesFull.length?candlesFull[candlesFull.length-1].t:null;
   const formingIsVisible = ve>=len && lastFullT!=null && nowSec<lastFullT+tfMin*60;
 
-  // Signal Candle (CESC on the CE panel, PESC on the PE panel) — resolved to
-  // a full-array index (not just the visible slice) so it still lines up
-  // correctly after zoom/pan.
-  const scTs=leg==='ce'?row.cescTimestamp:row.pescTimestamp;
-  const scIdxFull=scTs!=null?cocNearestIdx(candlesFull,scTs):null;
-
   // Candles (drawn on top of the highlight band)
   candles.forEach((c,i)=>{
     const x=padX+i*cw+cw/2;
     const up=c.c>=c.o;
     const isForming = formingIsVisible && i===candles.length-1;
-    const isSC = scIdxFull!=null && (vs+i)===scIdxFull;
-    ctx.strokeStyle=ctx.fillStyle=isSC?'#38bdf8':(up?'#26c281':'#ef4444');
+    ctx.strokeStyle=ctx.fillStyle=up?'#26c281':'#ef4444';
     ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(x,yOf(c.h)); ctx.lineTo(x,yOf(c.l)); ctx.stroke();
     const bw=Math.max(1,cw*0.6);
@@ -2287,15 +2284,29 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     } else {
       ctx.fillRect(x-bw/2, Math.min(yO,yC), bw, Math.max(1,Math.abs(yC-yO)));
     }
-    if(isSC){
-      // extra outline + label so the signal candle stands out from a
-      // same-colored regular green candle at a glance
-      ctx.strokeStyle='#38bdf8'; ctx.lineWidth=1.4;
-      ctx.strokeRect(x-bw/2-1, Math.min(yO,yC)-1, bw+2, Math.max(1,Math.abs(yC-yO))+2);
-      ctx.fillStyle='#38bdf8'; ctx.font='8px sans-serif'; ctx.textAlign='center';
-      ctx.fillText(leg==='ce'?'CESC':'PESC', x, Math.min(yO,yC)-4);
-    }
   });
+
+  // Signal Candle (CESC on the CE panel, PESC on the PE panel) — marked with
+  // a blue arrow + "SC" tag sitting above the candle's high, so it stands
+  // out clearly without having to recolor the candle itself (which read as
+  // "not changing" against a same-colored green candle at a glance).
+  const scTs=leg==='ce'?row.cescTimestamp:row.pescTimestamp;
+  const scIdxFull=scTs!=null?cocNearestIdx(candlesFull,scTs):null;
+  if(scIdxFull!=null && scIdxFull>=vs && scIdxFull<ve){
+    const reli=scIdxFull-vs;
+    const c=candles[reli];
+    if(c){
+      const x=padX+reli*cw+cw/2;
+      const yTip=yOf(c.h)-4;
+      ctx.fillStyle='#38bdf8';
+      ctx.beginPath();
+      ctx.moveTo(x,yTip); ctx.lineTo(x-4,yTip-7); ctx.lineTo(x+4,yTip-7); ctx.closePath();
+      ctx.fill();
+      ctx.lineWidth=0.8; ctx.strokeStyle='rgba(0,0,0,.5)'; ctx.stroke();
+      ctx.font='bold 8px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(leg==='ce'?'CESC':'PESC', x, yTip-10);
+    }
+  }
   if(formingIsVisible && candles.length){
     const x=padX+(candles.length-1)*cw+cw/2;
     ctx.fillStyle='#f59e0b'; ctx.font='8px sans-serif'; ctx.textAlign='center';
