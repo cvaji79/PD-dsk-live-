@@ -328,11 +328,13 @@ canvas.mc{width:100%;height:58px}
             <th style="padding:5px">MPH</th>
             <th style="padding:5px">MPL</th>
             <th style="padding:5px">MP Time</th>
+            <th style="padding:5px">CESC</th>
+            <th style="padding:5px">PESC</th>
           </tr></thead>
-          <tbody id="cocBody"><tr><td colspan="8" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr></tbody>
+          <tbody id="cocBody"><tr><td colspan="10" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr></tbody>
         </table>
       </div>
-      <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">MAP = last CE/PE meeting price (3m candle) · MPH/MPL = merged (CE+PE) HH/LL over the last 9x3m candles ending at that meeting candle · SNI = one-strike-OTM CE+PE prev-day-close average, fixed for the day · Green = LTP&gt;SNI · Red = LTP&lt;SNI (both CE &amp; PE)</div>
+      <div style="font-size:9px;color:var(--text3);text-align:center;margin-top:6px">MAP = last CE/PE meeting price (3m candle) · MPH/MPL = merged (CE+PE) HH/LL over the last 9x3m candles ending at that meeting candle · SNI = one-strike-OTM CE+PE prev-day-close average, fixed for the day · Green = LTP&gt;SNI · Red = LTP&lt;SNI (both CE &amp; PE) · CESC/PESC = Signal Candle — most recent green 3m candle (on CE leg for CESC, PE leg for PESC) whose range contains BOTH the CE VWAP and the PE VWAP at that candle's close</div>
     </div>
 
     <!-- COC ENTRY SIGNALS — CE/PE breakout of the shared MAP/MPH/MPL box -->
@@ -1417,7 +1419,7 @@ async function runCocScan(){
 
     const strikes=[]; for(let i=-5;i<=5;i++) strikes.push(atm+i*step); // ATM ±5 (11 strikes) — was ±7 (15), reduced to lower request volume against Fyers' rate limit
     const pdcFrom=new Date(today.getTime()-6*86400000);
-    cocData=strikes.map(s=>({strike:s,ceLtp:null,peLtp:null,map:null,mph:null,mpl:null,mpTime:null,mpTimestamp:null,sni:null,isAtm:s===atm}));
+    cocData=strikes.map(s=>({strike:s,ceLtp:null,peLtp:null,map:null,mph:null,mpl:null,mpTime:null,mpTimestamp:null,sni:null,isAtm:s===atm,cescTime:null,cescTimestamp:null,pescTime:null,pescTimestamp:null}));
     renderCocTable();
 
     let done=0;
@@ -1461,6 +1463,42 @@ async function runCocScan(){
               break;
             }
           }
+
+          // --- Signal Candle (SC) --------------------------------------
+          // CESC/PESC: the most recent green 3m candle (on the CE leg for
+          // CESC, on the PE leg for PESC) whose own high/low range contains
+          // BOTH the CE VWAP and the PE VWAP as of that candle's close.
+          // VWAP is built once per leg from its 1m series, then sampled
+          // "as of" each 3m candle's close time (start+179s) so it lines up
+          // with a session-anchored VWAP the way the chart's own VWAP line
+          // does (see calcVwapSeries/vwapAsOf above).
+          const ceVwap1m=calcVwapSeries(ce1m), peVwap1m=calcVwapSeries(pe1m);
+          for(let i=ce3.length-1;i>=0;i--){
+            const cnd=ce3[i];
+            if(cnd.c<=cnd.o) continue; // must be a green candle
+            const closeT=cnd.t+179;
+            const ceV=vwapAsOf(ce1m,ceVwap1m,closeT);
+            const peV=vwapAsOf(pe1m,peVwap1m,closeT);
+            if(ceV==null||peV==null) continue;
+            if(ceV>=cnd.l && ceV<=cnd.h && peV>=cnd.l && peV<=cnd.h){
+              row.cescTimestamp=cnd.t;
+              row.cescTime=new Date(cnd.t*1000).toTimeString().slice(0,5);
+              break;
+            }
+          }
+          for(let i=pe3.length-1;i>=0;i--){
+            const cnd=pe3[i];
+            if(cnd.c<=cnd.o) continue; // must be a green candle
+            const closeT=cnd.t+179;
+            const ceV=vwapAsOf(ce1m,ceVwap1m,closeT);
+            const peV=vwapAsOf(pe1m,peVwap1m,closeT);
+            if(ceV==null||peV==null) continue;
+            if(ceV>=cnd.l && ceV<=cnd.h && peV>=cnd.l && peV<=cnd.h){
+              row.pescTimestamp=cnd.t;
+              row.pescTime=new Date(cnd.t*1000).toTimeString().slice(0,5);
+              break;
+            }
+          }
         }
         if(ceOtm?.symbol && peOtm?.symbol){
           const cePdc=await getCachedPdc(ceOtm.symbol,pdcFrom,today);
@@ -1486,7 +1524,7 @@ async function runCocScan(){
 
 function renderCocTable(){
   const body=document.getElementById('cocBody');
-  if(!cocData.length){ body.innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr>'; return; }
+  if(!cocData.length){ body.innerHTML='<tr><td colspan="10" style="padding:18px;color:var(--text3);text-align:center">No data yet</td></tr>'; return; }
   body.innerHTML=cocData.map(r=>{
     const hasSni = r.sni!=null;
     const ceUp = hasSni && r.ceLtp!=null && r.ceLtp>r.sni;
@@ -1504,6 +1542,8 @@ function renderCocTable(){
       <td style="padding:5px;text-align:center">${r.mph!=null?r.mph.toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center">${r.mpl!=null?r.mpl.toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center;color:var(--text3)">${r.mpTime||'—'}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;color:${r.cescTime?'var(--green)':'var(--text3)'}">${r.cescTime||'—'}</td>
+      <td style="padding:5px;text-align:center;font-weight:700;color:${r.pescTime?'var(--green)':'var(--text3)'}">${r.pescTime||'—'}</td>
     </tr>`;
   }).join('');
 }
@@ -2223,12 +2263,19 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
   const lastFullT=candlesFull.length?candlesFull[candlesFull.length-1].t:null;
   const formingIsVisible = ve>=len && lastFullT!=null && nowSec<lastFullT+tfMin*60;
 
+  // Signal Candle (CESC on the CE panel, PESC on the PE panel) — resolved to
+  // a full-array index (not just the visible slice) so it still lines up
+  // correctly after zoom/pan.
+  const scTs=leg==='ce'?row.cescTimestamp:row.pescTimestamp;
+  const scIdxFull=scTs!=null?cocNearestIdx(candlesFull,scTs):null;
+
   // Candles (drawn on top of the highlight band)
   candles.forEach((c,i)=>{
     const x=padX+i*cw+cw/2;
     const up=c.c>=c.o;
     const isForming = formingIsVisible && i===candles.length-1;
-    ctx.strokeStyle=ctx.fillStyle=up?'#26c281':'#ef4444';
+    const isSC = scIdxFull!=null && (vs+i)===scIdxFull;
+    ctx.strokeStyle=ctx.fillStyle=isSC?'#ec4899':(up?'#26c281':'#ef4444');
     ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(x,yOf(c.h)); ctx.lineTo(x,yOf(c.l)); ctx.stroke();
     const bw=Math.max(1,cw*0.6);
@@ -2240,6 +2287,14 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
       ctx.setLineDash([]);
     } else {
       ctx.fillRect(x-bw/2, Math.min(yO,yC), bw, Math.max(1,Math.abs(yC-yO)));
+    }
+    if(isSC){
+      // extra outline + label so the signal candle stands out from a
+      // same-colored regular green candle at a glance
+      ctx.strokeStyle='#ec4899'; ctx.lineWidth=1.4;
+      ctx.strokeRect(x-bw/2-1, Math.min(yO,yC)-1, bw+2, Math.max(1,Math.abs(yC-yO))+2);
+      ctx.fillStyle='#ec4899'; ctx.font='8px sans-serif'; ctx.textAlign='center';
+      ctx.fillText(leg==='ce'?'CESC':'PESC', x, Math.min(yO,yC)-4);
     }
   });
   if(formingIsVisible && candles.length){
