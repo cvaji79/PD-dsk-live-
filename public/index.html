@@ -2372,8 +2372,13 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
   }
 
   // Keep the section title above the canvas in sync with the live price
+  // AND show the CESC/PESC time here too — this text is always visible no
+  // matter how far the chart is zoomed/panned, so it doubles as a way to
+  // confirm whether a signal candle was actually found even if it's
+  // currently scrolled out of view.
+  const scLabel=leg==='ce'?row.cescTime:row.pescTime;
   const labelEl=document.getElementById(leg==='ce'?'cocCeLabel':'cocPeLabel');
-  if(labelEl) labelEl.textContent=(leg==='ce'?'CE — Call':'PE — Put')+(liveLtp!=null?'   ₹'+parseFloat(liveLtp).toFixed(1):'');
+  if(labelEl) labelEl.textContent=(leg==='ce'?'CE — Call':'PE — Put')+(liveLtp!=null?'   ₹'+parseFloat(liveLtp).toFixed(1):'')+(scLabel?'   ·   '+(leg==='ce'?'CESC ':'PESC ')+scLabel:'');
 
   // Time axis — a handful of evenly spaced labels, not one per candle
   const labelEvery=Math.max(1,Math.ceil(candles.length/6));
