@@ -1467,18 +1467,18 @@ async function runCocScan(){
           // --- Signal Candle (SC) --------------------------------------
           // CESC/PESC: the most recent green 3m candle (on the CE leg for
           // CESC, on the PE leg for PESC) whose own high/low range contains
-          // BOTH the CE VWAP and the PE VWAP as of that candle's close.
-          // VWAP is built once per leg from its 1m series, then sampled
-          // "as of" each 3m candle's close time (start+179s) so it lines up
-          // with a session-anchored VWAP the way the chart's own VWAP line
-          // does (see calcVwapSeries/vwapAsOf above).
-          const ceVwap1m=calcVwapSeries(ce1m), peVwap1m=calcVwapSeries(pe1m);
+          // BOTH the CE VWAP and the PE VWAP.
+          // IMPORTANT: VWAP is computed directly off the 3m candles (same
+          // calcVwapSeries call, same inputs as the chart's own cyan VWAP
+          // line), not rebuilt from 1m data — a 1m-cumulative VWAP and a
+          // 3m-bar VWAP drift apart over the session, which made candles
+          // that visibly straddle the plotted VWAP line fail this check.
+          const ceVwap3=calcVwapSeries(ce3), peVwap3=calcVwapSeries(pe3);
           for(let i=ce3.length-1;i>=0;i--){
             const cnd=ce3[i];
             if(cnd.c<=cnd.o) continue; // must be a green candle
-            const closeT=cnd.t+179;
-            const ceV=vwapAsOf(ce1m,ceVwap1m,closeT);
-            const peV=vwapAsOf(pe1m,peVwap1m,closeT);
+            const ceV=ceVwap3[i];
+            const peV=vwapAsOf(pe3,peVwap3,cnd.t);
             if(ceV==null||peV==null) continue;
             if(ceV>=cnd.l && ceV<=cnd.h && peV>=cnd.l && peV<=cnd.h){
               row.cescTimestamp=cnd.t;
@@ -1489,9 +1489,8 @@ async function runCocScan(){
           for(let i=pe3.length-1;i>=0;i--){
             const cnd=pe3[i];
             if(cnd.c<=cnd.o) continue; // must be a green candle
-            const closeT=cnd.t+179;
-            const ceV=vwapAsOf(ce1m,ceVwap1m,closeT);
-            const peV=vwapAsOf(pe1m,peVwap1m,closeT);
+            const peV=peVwap3[i];
+            const ceV=vwapAsOf(ce3,ceVwap3,cnd.t);
             if(ceV==null||peV==null) continue;
             if(ceV>=cnd.l && ceV<=cnd.h && peV>=cnd.l && peV<=cnd.h){
               row.pescTimestamp=cnd.t;
