@@ -2275,7 +2275,7 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     const up=c.c>=c.o;
     const isForming = formingIsVisible && i===candles.length-1;
     const isSC = scIdxFull!=null && (vs+i)===scIdxFull;
-    ctx.strokeStyle=ctx.fillStyle=isSC?'#ec4899':(up?'#26c281':'#ef4444');
+    ctx.strokeStyle=ctx.fillStyle=isSC?'#38bdf8':(up?'#26c281':'#ef4444');
     ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(x,yOf(c.h)); ctx.lineTo(x,yOf(c.l)); ctx.stroke();
     const bw=Math.max(1,cw*0.6);
@@ -2291,9 +2291,9 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     if(isSC){
       // extra outline + label so the signal candle stands out from a
       // same-colored regular green candle at a glance
-      ctx.strokeStyle='#ec4899'; ctx.lineWidth=1.4;
+      ctx.strokeStyle='#38bdf8'; ctx.lineWidth=1.4;
       ctx.strokeRect(x-bw/2-1, Math.min(yO,yC)-1, bw+2, Math.max(1,Math.abs(yC-yO))+2);
-      ctx.fillStyle='#ec4899'; ctx.font='8px sans-serif'; ctx.textAlign='center';
+      ctx.fillStyle='#38bdf8'; ctx.font='8px sans-serif'; ctx.textAlign='center';
       ctx.fillText(leg==='ce'?'CESC':'PESC', x, Math.min(yO,yC)-4);
     }
   });
