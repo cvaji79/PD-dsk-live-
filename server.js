@@ -77,7 +77,14 @@ async function relay(res, url, opts) {
     }
     res.status(r.status).type('application/json').send(text);
   } catch (e) {
-    res.status(502).json({ s: 'error', message: 'Proxy could not reach Fyers: ' + e.message });
+    // Node's fetch throws a generic "fetch failed" here for every kind of
+    // transport failure (DNS lookup failed, connection refused, TLS error,
+    // timeout, the STATIC_PROXY_URL host being unreachable, ...) — the
+    // actual reason lives one level down, in e.cause. Surface it instead
+    // of just "fetch failed", which told us nothing.
+    const cause = e.cause ? ` (${e.cause.code || e.cause.message || e.cause})` : '';
+    console.log(`\n  [Fyers unreachable] ${opts && opts.method || 'GET'} ${url}\n  → ${e.message}${cause}\n`);
+    res.status(502).json({ s: 'error', message: 'Proxy could not reach Fyers: ' + e.message + cause });
   }
 }
 
