@@ -747,6 +747,57 @@ function fyOptType(x){
   return (t==='CE'||t==='PE') ? t : null;
 }
 
+// Groups 1-minute candles into clock-aligned N-minute buckets
+function resampleCandles(oneMin,everyN){
+  if(everyN===1) return oneMin;
+  const buckets={};
+  const order=[];
+  oneMin.forEach(c=>{
+    const bucketT=Math.floor(c.t/(everyN*60))*everyN*60;
+    if(!buckets[bucketT]){ buckets[bucketT]={t:bucketT,o:c.o,h:c.h,l:c.l,c:c.c,v:c.v}; order.push(bucketT); }
+    else{ const b=buckets[bucketT]; b.h=Math.max(b.h,c.h); b.l=Math.min(b.l,c.l); b.c=c.c; b.v+=c.v; }
+  });
+  return order.map(t=>buckets[t]);
+}
+
+// Session-anchored VWAP — cumulative (typical price × volume) / cumulative
+// volume, resetting at every new trading day so multi-day chart history
+// (3D/7D) doesn't bleed yesterday's volume into today's VWAP.
+function calcVwapSeries(candles){
+  let cumPV=0,cumV=0,curDay=null;
+  return candles.map(c=>{
+    const day=new Date(c.t*1000).toDateString();
+    if(day!==curDay){ curDay=day; cumPV=0; cumV=0; }
+    const tp=(c.h+c.l+c.c)/3, v=c.v||0;
+    cumPV+=tp*v; cumV+=v;
+    return cumV?cumPV/cumV:null;
+  });
+}
+// VWAP value as of (last known at-or-before) a given 1m timestamp — used to
+// align a 1m-built VWAP series to a coarser (e.g. 3m) candle's close time.
+function vwapAsOf(oneMin,vwapSeries,t){
+  let best=null;
+  for(let i=0;i<oneMin.length;i++){ if(oneMin[i].t<=t) best=vwapSeries[i]; else break; }
+  return best;
+}
+
+async function fetchHistory(fySymbol,resolution,rangeFrom,rangeTo,retries=2){
+  const auth=FYERS_APP_ID+':'+ST.fyToken;
+  const url=`/api/history?symbol=${encodeURIComponent(fySymbol)}&resolution=${resolution}&date_format=1&range_from=${rangeFrom}&range_to=${rangeTo}&cont_flag=1`;
+  const r=await fetch(url,{headers:{'Authorization':auth}});
+  if(r.status===429 && retries>0){
+    // Fyers/Cloudflare rate-limited us — back off and retry rather than
+    // letting it cascade into every remaining call in the scan failing too.
+    await new Promise(res=>setTimeout(res,1200));
+    return fetchHistory(fySymbol,resolution,rangeFrom,rangeTo,retries-1);
+  }
+  const d=await r.json();
+  if(d.s==='error') throw new Error(d.message||'history error');
+  return (d.candles||[]).map(c=>({t:c[0],o:c[1],h:c[2],l:c[3],c:c[4],v:c[5]}));
+}
+
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
 // ================================================================
 // STATE
 // ================================================================
