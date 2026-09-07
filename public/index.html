@@ -1489,7 +1489,7 @@ function renderFirTable(){
       <td style="padding:5px;text-align:center">${cf?.latest?cf.latest.kcLow.toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center;color:var(--text3)">${ceTime}</td>
       <td style="padding:5px;text-align:center;font-weight:700;${ceStyle}">${r.ceLtp!=null?'₹'+parseFloat(r.ceLtp).toFixed(1):'—'}</td>
-      <td style="padding:5px;text-align:left;font-weight:700;${r.isAtm?'color:var(--purple)':'color:var(--blue)'}">${r.strike}${r.isAtm?' <span style="font-size:8px">ATM</span>':''}<div style="font-size:8px;color:var(--text3);font-weight:400">SNI ${r.sni!=null?r.sni.toFixed(1):'—'}</div></td>
+      <td style="padding:5px;text-align:left;font-weight:700;cursor:pointer;text-decoration:underline dotted;${r.isAtm?'color:var(--purple)':'color:var(--blue)'}" onclick="openFirChart(${r.strike})">${r.strike}${r.isAtm?' <span style="font-size:8px">ATM</span>':''}<div style="font-size:8px;color:var(--text3);font-weight:400">SNI ${r.sni!=null?r.sni.toFixed(1):'—'}</div></td>
       <td style="padding:5px;text-align:center;font-weight:700;${peStyle}">${r.peLtp!=null?'₹'+parseFloat(r.peLtp).toFixed(1):'—'}</td>
       <td style="padding:5px;text-align:center;color:var(--text3)">${peTime}</td>
       <td style="padding:5px;text-align:center">${pf?.latest?pf.latest.kcLow.toFixed(1):'—'}</td>
@@ -1801,24 +1801,35 @@ function toggleCocSig(){
 // 1m/3m/5m/15m/25m/75m timeframes, optional live auto-refresh, and
 // Buy/Sell buttons that hand off straight into the Order tab.
 // ================================================================
-let cocChartState={strike:null,ceSymbol:null,peSymbol:null,tf:3,days:3,liveTimer:null};
+let cocChartState={strike:null,ceSymbol:null,peSymbol:null,tf:3,days:3,liveTimer:null,source:'coc'};
 let cocHistCache={}; // symbol -> {days:N, past:[1m candles excluding today]} — past days never change, so cache them once
 
-function openCocChart(strike){
-  const row=cocData.find(r=>r.strike===strike);
+// Shared opener behind both openCocChart() and openFirChart() — 'source'
+// controls which table/inputs the popup reads its live SNI/LTP overlay and
+// Buy/Sell-to-Order-tab handoff from (see drawCandles() and
+// cocPickAndOrder() below, both of which branch on cocChartState.source).
+function openChartFor(source,strike){
+  const dataArr = source==='fir' ? firData : cocData;
+  const symId = source==='fir' ? 'firSym' : 'cocSym';
+  const row=dataArr.find(r=>r.strike===strike);
   if(!row || !row.ceSymbol || !row.peSymbol){ showToast('Run a Scan first'); return; }
+  cocChartState.source=source;
   cocChartState.strike=strike;
   cocChartState.ceSymbol=row.ceSymbol;
   cocChartState.peSymbol=row.peSymbol;
   cocChartState.tf=3;
   cocChartState.days=3; // 3-day default — fast; bump to 7D in the popup if you want more history
-  document.getElementById('cocChartTitle').textContent='🎯 '+document.getElementById('cocSym').value+' '+strike+(row.isAtm?' (ATM)':'');
+  document.getElementById('cocChartTitle').textContent='🎯 '+document.getElementById(symId).value+' '+strike+(row.isAtm?' (ATM)':'');
   document.querySelectorAll('.coc-tf-btn').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.tf)===3));
   document.querySelectorAll('.coc-days-btn').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.days)===3));
   openModal('cocChartModal');
   loadCocChart();
   if(document.getElementById('cocChartLive').checked) startCocChartLive();
 }
+
+function openCocChart(strike){ openChartFor('coc',strike); }
+function openFirChart(strike){ openChartFor('fir',strike); }
+
 
 function closeCocChart(){
   closeModal('cocChartModal');
@@ -2157,7 +2168,8 @@ function initCocCrosshair(){
 // keeps the app self-contained, nothing that can fail to load from a CDN).
 // hoverIdx (optional, index into the FULL candles array): draws a crosshair
 // + OHLC/time readout if that candle is inside the current zoom window.
-// leg ('ce'|'pe'): looks up that leg's live LTP / SNI / MPH-MPL from cocData.
+// leg ('ce'|'pe'): looks up that leg's live LTP/SNI/MPH-MPL from cocData or
+// firData, depending on which tab opened this chart (see cocChartState.source).
 function drawCandles(canvasId,candlesFull,hoverIdx,leg){
   const canvas=document.getElementById(canvasId);
   if(!canvas) return;
@@ -2172,7 +2184,8 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
     ctx.fillText('No candle data yet', w/2, h/2);
     return;
   }
-  const row=cocData.find(r=>r.strike===cocChartState.strike)||{};
+  const dataArr = cocChartState.source==='fir' ? firData : cocData;
+  const row=dataArr.find(r=>r.strike===cocChartState.strike)||{};
   const liveLtp=leg==='ce'?row.ceLtp:row.peLtp;
   const sni=row.sni;
   const mph=row.mph, mpl=row.mpl, mpTs=row.mpTimestamp;
@@ -2367,10 +2380,13 @@ function drawCandles(canvasId,candlesFull,hoverIdx,leg){
 // Sends the picked strike/leg straight to the Order tab, pre-filled — mirrors
 // pickStrike() from the main Option Chain modal so it behaves identically.
 function cocPickAndOrder(otype,side){
-  const row=cocData.find(r=>r.strike===cocChartState.strike);
+  const dataArr = cocChartState.source==='fir' ? firData : cocData;
+  const symId = cocChartState.source==='fir' ? 'firSym' : 'cocSym';
+  const expId = cocChartState.source==='fir' ? 'firExp' : 'cocExp';
+  const row=dataArr.find(r=>r.strike===cocChartState.strike);
   if(!row){ showToast('Strike data not found — try re-scanning'); return; }
-  const sym=document.getElementById('cocSym').value;
-  const exp=document.getElementById('cocExp').value;
+  const sym=document.getElementById(symId).value;
+  const exp=document.getElementById(expId).value;
   const ceLtp=row.ceLtp||0, peLtp=row.peLtp||0;
   setSeg('OPT');
   document.getElementById('oTyp').value=otype;
