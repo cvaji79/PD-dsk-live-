@@ -1235,6 +1235,7 @@ async function runCocScan(){
     stSt.textContent=`Scan complete — ${sym} ${exp} · ATM ${atm} · Spot ${spot.toFixed(2)}`;
     startCocLiveFeed(); // scan is a one-time snapshot; this keeps CE/PE LTPs moving afterward
     startCocRecalcFeed();
+    checkMphFirConfluence(); // don't wait up to 60s for the first background tick
   }catch(e){
     stSt.textContent='⚠️ '+e.message;
     stSt.style.color='var(--red)';
@@ -1531,6 +1532,7 @@ async function runFirScan(){
     stSt.textContent=`Scan complete — ${sym} ${exp} · ATM ${atm} · Spot ${spot.toFixed(2)} · auto-updates every 1m`;
     startFirLiveFeed();
     startFirRecalcFeed();
+    checkMphFirConfluence(); // don't wait up to 60s for the first background tick
   }catch(e){
     stSt.textContent='⚠️ '+e.message;
     stSt.style.color='var(--red)';
