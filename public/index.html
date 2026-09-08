@@ -401,10 +401,11 @@ canvas.mc{width:100%;height:58px}
             <th style="padding:5px">MPL</th>
             <th style="padding:5px">Time</th>
             <th style="padding:5px">CE FIR</th>
+            <th style="padding:5px">CE FIR Time</th>
             <th style="padding:5px">PE FIR</th>
-            <th style="padding:5px">FIR Time</th>
+            <th style="padding:5px">PE FIR Time</th>
           </tr></thead>
-          <tbody id="mphFirBody"><tr><td colspan="9" style="padding:14px;color:var(--text3);text-align:center">No confluence yet — needs a COC Scan and an OI Track (FIR) Scan on the same index/expiry, then waits for a strike where both a MAP and a FIR have fired</td></tr></tbody>
+          <tbody id="mphFirBody"><tr><td colspan="10" style="padding:14px;color:var(--text3);text-align:center">No confluence yet — needs a COC Scan and an OI Track (FIR) Scan on the same index/expiry, then waits for a strike where both a MAP and a FIR have fired</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1683,7 +1684,6 @@ function checkMphFirConfluence(){
     const ceTxt=firPlainLabel(firRow.ceFir), peTxt=firPlainLabel(firRow.peFir);
     if(!ceTxt && !peTxt) return; // no FIR at this strike yet — MAP alone doesn't qualify
     const ceTime=firRow.ceFir?.latest?.time||0, peTime=firRow.peFir?.latest?.time||0;
-    const firTimeTs=Math.max(ceTime,peTime);
     // Dedupe key: same strike + same MAP candle + same CE/PE FIR candle = already logged.
     // If MAP moves to a later meeting, or a leg's FIR advances to a newer setup, that's a
     // genuinely new moment and gets its own row.
@@ -1692,30 +1692,44 @@ function checkMphFirConfluence(){
     mphFirLog.unshift({
       key, strike:row.strike, sni:row.sni, map:row.map, mph:row.mph, mpl:row.mpl,
       mpTime:row.mpTime||'—', ceFirTxt:ceTxt, peFirTxt:peTxt,
-      firTime: firTimeTs?new Date(firTimeTs*1000).toTimeString().slice(0,5):'—'
+      ceFirTime: ceTime?new Date(ceTime*1000).toTimeString().slice(0,5):'—',
+      peFirTime: peTime?new Date(peTime*1000).toTimeString().slice(0,5):'—',
+      ceSymbol:row.ceSymbol, peSymbol:row.peSymbol
     });
     added=true;
   });
   if(added) renderMphFirTable();
 }
 
+// Opens the chart straight from a MAP+FIR log row, using that row's own
+// snapshotted CE/PE symbols — so it still opens the right contract even if
+// COC/FIR have since been re-scanned (e.g. ATM shifted, strike fell outside
+// ATM±5) and no longer carry this strike live. This is the fast path from
+// "signal appears" to "chart open, ready to Buy/Sell" you asked for.
+function openMphFirChart(key){
+  const e=mphFirLog.find(x=>x.key===key);
+  if(!e || !e.ceSymbol || !e.peSymbol){ showToast('Chart data not available for this row'); return; }
+  openChartFor('coc',e.strike,e.ceSymbol,e.peSymbol);
+}
+
 function renderMphFirTable(){
   const body=document.getElementById('mphFirBody');
   if(!body) return;
   if(!mphFirLog.length){
-    body.innerHTML='<tr><td colspan="9" style="padding:14px;color:var(--text3);text-align:center">No confluence yet — needs a COC Scan and an OI Track (FIR) Scan on the same index/expiry, then waits for a strike where both a MAP and a FIR have fired</td></tr>';
+    body.innerHTML='<tr><td colspan="10" style="padding:14px;color:var(--text3);text-align:center">No confluence yet — needs a COC Scan and an OI Track (FIR) Scan on the same index/expiry, then waits for a strike where both a MAP and a FIR have fired</td></tr>';
     return;
   }
   body.innerHTML=mphFirLog.map(e=>`<tr>
-    <td style="padding:5px;text-align:left;font-weight:700;color:var(--blue)">${e.strike}</td>
+    <td style="padding:5px;text-align:left;font-weight:700;cursor:pointer;text-decoration:underline dotted;color:var(--blue)" onclick="openMphFirChart('${e.key}')">${e.strike}</td>
     <td style="padding:5px;text-align:center">${e.sni!=null?e.sni.toFixed(1):'—'}</td>
     <td style="padding:5px;text-align:center;color:var(--amber);font-weight:700">${e.map.toFixed(1)}</td>
     <td style="padding:5px;text-align:center">${e.mph!=null?e.mph.toFixed(1):'—'}</td>
     <td style="padding:5px;text-align:center">${e.mpl!=null?e.mpl.toFixed(1):'—'}</td>
     <td style="padding:5px;text-align:center;color:var(--text3)">${e.mpTime}</td>
     <td style="padding:5px;text-align:center;color:var(--purple);font-weight:700">${e.ceFirTxt||'—'}</td>
+    <td style="padding:5px;text-align:center;color:var(--text3)">${e.ceFirTime}</td>
     <td style="padding:5px;text-align:center;color:var(--purple);font-weight:700">${e.peFirTxt||'—'}</td>
-    <td style="padding:5px;text-align:center;color:var(--text3)">${e.firTime}</td>
+    <td style="padding:5px;text-align:center;color:var(--text3)">${e.peFirTime}</td>
   </tr>`).join('');
 }
 
@@ -1965,18 +1979,23 @@ let cocHistCache={}; // symbol -> {days:N, past:[1m candles excluding today]} �
 // controls which table/inputs the popup reads its live SNI/LTP overlay and
 // Buy/Sell-to-Order-tab handoff from (see drawCandles() and
 // cocPickAndOrder() below, both of which branch on cocChartState.source).
-function openChartFor(source,strike){
-  const dataArr = source==='fir' ? firData : cocData;
+function openChartFor(source,strike,ceSymOverride,peSymOverride){
+  let ceSymbol=ceSymOverride, peSymbol=peSymOverride, isAtm=false;
+  if(!ceSymbol || !peSymbol){
+    const dataArr = source==='fir' ? firData : cocData;
+    const row=dataArr.find(r=>r.strike===strike);
+    if(!row || !row.ceSymbol || !row.peSymbol){ showToast('Run a Scan first'); return; }
+    ceSymbol=row.ceSymbol; peSymbol=row.peSymbol; isAtm=row.isAtm;
+  }
   const symId = source==='fir' ? 'firSym' : 'cocSym';
-  const row=dataArr.find(r=>r.strike===strike);
-  if(!row || !row.ceSymbol || !row.peSymbol){ showToast('Run a Scan first'); return; }
   cocChartState.source=source;
   cocChartState.strike=strike;
-  cocChartState.ceSymbol=row.ceSymbol;
-  cocChartState.peSymbol=row.peSymbol;
+  cocChartState.ceSymbol=ceSymbol;
+  cocChartState.peSymbol=peSymbol;
   cocChartState.tf=3;
   cocChartState.days=3; // 3-day default — fast; bump to 7D in the popup if you want more history
-  document.getElementById('cocChartTitle').textContent='🎯 '+document.getElementById(symId).value+' '+strike+(row.isAtm?' (ATM)':'');
+  const symEl=document.getElementById(symId);
+  document.getElementById('cocChartTitle').textContent='🎯 '+(symEl?symEl.value+' ':'')+strike+(isAtm?' (ATM)':'');
   document.querySelectorAll('.coc-tf-btn').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.tf)===3));
   document.querySelectorAll('.coc-days-btn').forEach(b=>b.classList.toggle('active', parseInt(b.dataset.days)===3));
   openModal('cocChartModal');
